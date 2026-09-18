@@ -28,10 +28,12 @@ interface DailyBrickKardex {
   brickName: string;
   dimensions: string;
   stockInicial: number;
-  produccionDia: number;
+  produccionVerde: number;
+  produccionTerminada: number;
   salidasDia: number;
   entradasDia: number;
   stockFinal: number;
+  stockEnProceso: number;
   foliosVaciado: string[];
 }
 
@@ -106,31 +108,11 @@ export default function InventarioPage() {
     // Ordenar fechas en orden cronológico ascendente (pasado -> futuro)
     const sortedDatesAsc = [...availableDates].sort((a, b) => a.localeCompare(b));
 
-    // Mapeo inicial de baseline stock anterior al primer día (estimado de base)
-    // Para dar coherencia visual, se establece una base según el stock inicial histórico
-    const initialBaseStock: Record<string, number> = {
-      "brick-1": 45000,
-      "brick-2": 12000,
-      "brick-3": 30000,
-      "brick-4": 8000,
-      "brick-5": 11000,
-      "brick-6": 5000,
-      "brick-7": 4000,
-      "brick-8": 3000,
-      "brick-9": 15000,
-      "brick-10": 7000,
-      "brick-11": 20000,
-      "brick-12": 10000,
-      "brick-13": 6000,
-      "brick-14": 5000,
-      "brick-15": 2500,
-      "brick-16": 4500,
-      "brick-17": 8000,
-    };
-
     const runningStock: Record<string, number> = {};
+    const runningProceso: Record<string, number> = {};
     brickTypes.forEach((bt) => {
-      runningStock[bt.id] = initialBaseStock[bt.id] || 5000;
+      runningStock[bt.id] = 0;
+      runningProceso[bt.id] = 0;
     });
 
     const result: DailyBrickKardex[] = [];
@@ -139,12 +121,21 @@ export default function InventarioPage() {
     sortedDatesAsc.forEach((dateStr) => {
       brickTypes.forEach((bt) => {
         const stockInicial = runningStock[bt.id];
+        const procesoInicial = runningProceso[bt.id];
 
         // Sumar producción del día (Vaciados)
         const dayBatches = batches.filter(
           (b) => b.brick_type_id === bt.id && b.production_date === dateStr
         );
-        const produccionDia = dayBatches.reduce((acc, b) => acc + (b.quantity_produced || 0), 0);
+        
+        const produccionDiaria = dayBatches.reduce((acc, b) => acc + (b.quantity_produced || 0), 0);
+          
+        const produccionTerminada = dayBatches
+          .filter(b => b.status === "terminado")
+          .reduce((acc, b) => acc + (b.quantity_produced || 0), 0);
+
+        const produccionVerde = produccionDiaria - produccionTerminada;
+
         const foliosVaciado = dayBatches
           .map((b) => b.folio_number)
           .filter((f): f is string => Boolean(f));
@@ -162,7 +153,7 @@ export default function InventarioPage() {
           }
         });
 
-        // Sumar movimientos manuales del día
+        // Sumar movimientos manuales del día (Opcional, pero util para ajustes)
         let entradasManual = 0;
         let salidasManual = 0;
         movements.forEach((m) => {
@@ -174,12 +165,19 @@ export default function InventarioPage() {
         });
 
         const salidasDia = salidasVenta + salidasManual;
-        const entradasDia = entradasManual;
 
-        const stockFinal = stockInicial + produccionDia + entradasDia - salidasDia;
+        // Stock En Proceso (se suma verde, se resta terminada asumiendo conversión)
+        const stockEnProceso = procesoInicial + produccionVerde - produccionTerminada;
 
-        // Actualizar el stock corriente para la siguiente fecha
-        runningStock[bt.id] = stockFinal;
+        // Stock Final acumulado puramente de la producción (sin restar salidas para el arrastre)
+        const stockFinalProduccion = stockInicial + produccionDiaria;
+
+        // Actualizar el stock corriente para la siguiente fecha SOLO con producción
+        runningStock[bt.id] = stockFinalProduccion;
+        runningProceso[bt.id] = stockEnProceso < 0 ? 0 : stockEnProceso;
+
+        // El Stock Final del día sí refleja la resta de las salidas
+        const stockFinalDia = stockFinalProduccion - salidasDia;
 
         result.push({
           date: dateStr,
@@ -187,10 +185,12 @@ export default function InventarioPage() {
           brickName: bt.name,
           dimensions: bt.dimensions || "N/A",
           stockInicial,
-          produccionDia,
+          produccionVerde,
+          produccionTerminada,
           salidasDia,
-          entradasDia,
-          stockFinal,
+          entradasDia: entradasManual,
+          stockFinal: stockFinalDia,
+          stockEnProceso: runningProceso[bt.id],
           foliosVaciado
         });
       });
@@ -198,7 +198,7 @@ export default function InventarioPage() {
 
     // Retornar ordenado descendente por fecha para vista reciente
     return result.sort((a, b) => b.date.localeCompare(a.date));
-  }, [brickTypes, availableDates, batches, sales, movements]);
+  }, [brickTypes, availableDates, batches]);
 
   // 3. Kardex filtrado para la fecha seleccionada
   const dailyReportForSelectedDate = useMemo(() => {
@@ -221,17 +221,21 @@ export default function InventarioPage() {
   // Totales de la fecha seleccionada
   const totalsSelectedDate = useMemo(() => {
     const items = kardexHistory.filter((k) => k.date === selectedDate);
-    const totalProduccion = items.reduce((acc, k) => acc + k.produccionDia, 0);
+    const totalProduccionVerde = items.reduce((acc, k) => acc + k.produccionVerde, 0);
+    const totalProduccionTerminada = items.reduce((acc, k) => acc + k.produccionTerminada, 0);
     const totalSalidas = items.reduce((acc, k) => acc + k.salidasDia, 0);
     const totalStockFinal = items.reduce((acc, k) => acc + k.stockFinal, 0);
     const totalStockInicial = items.reduce((acc, k) => acc + k.stockInicial, 0);
+    const totalEnProceso = items.reduce((acc, k) => acc + k.stockEnProceso, 0);
 
     return {
-      totalProduccion,
+      totalProduccionVerde,
+      totalProduccionTerminada,
       totalSalidas,
       totalStockFinal,
       totalStockInicial,
-      variacionNeta: totalProduccion - totalSalidas
+      totalEnProceso,
+      variacionNeta: totalProduccionTerminada - totalSalidas
     };
   }, [kardexHistory, selectedDate]);
 
@@ -297,29 +301,39 @@ export default function InventarioPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-xs">
             <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-1">
-              <span>Stock Inicial (Antes de Fecha)</span>
+              <span>Stock Anterior</span>
               <History className="w-4 h-4 text-slate-400" />
             </div>
             <div className="text-2xl font-black text-slate-800 font-mono">
               {totalsSelectedDate.totalStockInicial.toLocaleString()} <span className="text-xs font-normal text-slate-400">unid.</span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Acumulado antes de {selectedDate}</p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Stock hasta {(() => {
+                const [year, month, day] = selectedDate.split('-').map(Number);
+                const d = new Date(year, month - 1, day);
+                d.setDate(d.getDate() - 1);
+                const y = d.getFullYear();
+                const m = String(d.getMonth() + 1).padStart(2, '0');
+                const dy = String(d.getDate()).padStart(2, '0');
+                return `${y}-${m}-${dy}`;
+              })()}
+            </p>
           </div>
 
-          <div className="bg-white rounded-xl border border-emerald-200 p-4 shadow-xs bg-emerald-50/20">
-            <div className="flex items-center justify-between text-emerald-700 text-xs font-bold mb-1">
-              <span>Producción Vaciada del Día (+)</span>
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
+          <div className="bg-white rounded-xl border border-blue-200 p-4 shadow-xs bg-blue-50/20">
+            <div className="flex items-center justify-between text-blue-700 text-xs font-bold mb-1">
+              <span>Producción Diaria ({selectedDate})</span>
+              <TrendingUp className="w-4 h-4 text-blue-600" />
             </div>
-            <div className="text-2xl font-black text-emerald-900 font-mono">
-              +{totalsSelectedDate.totalProduccion.toLocaleString()} <span className="text-xs font-normal text-emerald-700">unid.</span>
+            <div className="text-2xl font-black text-blue-900 font-mono">
+              +{(totalsSelectedDate.totalProduccionVerde + totalsSelectedDate.totalProduccionTerminada).toLocaleString()} <span className="text-xs font-normal text-blue-700">unid.</span>
             </div>
-            <p className="text-[11px] text-emerald-600 mt-1">Ladrillos moldeados en {selectedDate}</p>
+            <p className="text-[11px] text-blue-600 mt-1">Producción total registrada en el día</p>
           </div>
 
           <div className="bg-white rounded-xl border border-rose-200 p-4 shadow-xs bg-rose-50/20">
             <div className="flex items-center justify-between text-rose-700 text-xs font-bold mb-1">
-              <span>Salidas / Ventas del Día (-)</span>
+              <span>Vendido / Salidas (-)</span>
               <TrendingDown className="w-4 h-4 text-rose-600" />
             </div>
             <div className="text-2xl font-black text-rose-900 font-mono">
@@ -330,13 +344,13 @@ export default function InventarioPage() {
 
           <div className="bg-white rounded-xl border border-orange-300 p-4 shadow-md bg-orange-50/40">
             <div className="flex items-center justify-between text-orange-800 text-xs font-extrabold mb-1">
-              <span>Stock Final Actualizado (=)</span>
+              <span>Stock Actual ({selectedDate})</span>
               <Boxes className="w-4 h-4 text-orange-600" />
             </div>
             <div className="text-2xl font-black text-orange-950 font-mono">
               {totalsSelectedDate.totalStockFinal.toLocaleString()} <span className="text-xs font-normal text-orange-800">unid.</span>
             </div>
-            <p className="text-[11px] text-orange-700 font-medium mt-1">Inventario disponible final de {selectedDate}</p>
+            <p className="text-[11px] text-orange-700 font-medium mt-1">Inventario actualizado con cierre del día</p>
           </div>
         </div>
 
@@ -432,21 +446,25 @@ export default function InventarioPage() {
                     <th className="p-3.5 text-center">Dimensiones</th>
                     <th className="p-3.5 text-right bg-slate-200/50 text-slate-800">
                       Stock Inicial <br />
-                      <span className="text-[10px] font-normal text-slate-500">(Hasta antes del día)</span>
+                      <span className="text-[10px] font-normal text-slate-500">(Bodega Terminado)</span>
+                    </th>
+                    <th className="p-3.5 text-right bg-blue-50 text-blue-900">
+                      En Proceso (Verde) <br />
+                      <span className="text-[10px] font-normal text-blue-700">(Recién Moldeado)</span>
                     </th>
                     <th className="p-3.5 text-right bg-emerald-50 text-emerald-900">
-                      Producción del Día (+) <br />
-                      <span className="text-[10px] font-normal text-emerald-700">(Vaciado / Horneado)</span>
+                      Terminado (+) <br />
+                      <span className="text-[10px] font-normal text-emerald-700">(Pasa a Bodega)</span>
                     </th>
                     <th className="p-3.5 text-right bg-rose-50 text-rose-900">
-                      Salidas del Día (-) <br />
-                      <span className="text-[10px] font-normal text-rose-700">(Ventas / Mermas)</span>
+                      Salidas / Ventas (-) <br />
+                      <span className="text-[10px] font-normal text-rose-700">(Mermas/Venta)</span>
                     </th>
                     <th className="p-3.5 text-right bg-orange-100/60 text-orange-950">
-                      Inventario Final (=) <br />
-                      <span className="text-[10px] font-extrabold text-orange-800">(Stock Actualizado)</span>
+                      Stock Final (=) <br />
+                      <span className="text-[10px] font-extrabold text-orange-800">(Disponible Venta)</span>
                     </th>
-                    <th className="p-3.5 text-center">Folios de Producción</th>
+                    <th className="p-3.5 text-center">Folios</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -476,11 +494,22 @@ export default function InventarioPage() {
                           {item.stockInicial.toLocaleString()} <span className="text-[10px] text-slate-400">unid.</span>
                         </td>
 
+                        <td className="p-3.5 text-right font-mono font-extrabold bg-blue-50/30 text-blue-800">
+                          {item.produccionVerde > 0 ? (
+                            <span className="inline-flex items-center space-x-1 text-blue-700 font-bold bg-blue-100 px-2 py-0.5 rounded-md">
+                              <ArrowUpRight className="w-3 h-3" />
+                              <span>+{item.produccionVerde.toLocaleString()}</span>
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">0</span>
+                          )}
+                        </td>
+
                         <td className="p-3.5 text-right font-mono font-extrabold bg-emerald-50/30 text-emerald-800">
-                          {item.produccionDia > 0 ? (
+                          {item.produccionTerminada > 0 ? (
                             <span className="inline-flex items-center space-x-1 text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded-md">
                               <ArrowUpRight className="w-3 h-3" />
-                              <span>+{item.produccionDia.toLocaleString()}</span>
+                              <span>+{item.produccionTerminada.toLocaleString()}</span>
                             </span>
                           ) : (
                             <span className="text-slate-400">0</span>
@@ -553,17 +582,18 @@ export default function InventarioPage() {
                   <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
                     <th className="p-3.5">Fecha</th>
                     <th className="p-3.5">Tipo de Ladrillo</th>
-                    <th className="p-3.5 text-right">Stock Inicial (Anterior)</th>
-                    <th className="p-3.5 text-right text-emerald-800">Producción (+)</th>
+                    <th className="p-3.5 text-right">Stock Inicial (Terminado)</th>
+                    <th className="p-3.5 text-right text-blue-800">Moldeados (Crudos)</th>
+                    <th className="p-3.5 text-right text-emerald-800">Producción Terminada (+)</th>
                     <th className="p-3.5 text-right text-rose-800">Salidas / Ventas (-)</th>
-                    <th className="p-3.5 text-right text-orange-950 font-black">Stock Final Actualizado</th>
+                    <th className="p-3.5 text-right text-orange-950 font-black">Stock Final (Terminado)</th>
                     <th className="p-3.5">Detalle / Folio</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredKardexHistory.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                      <td colSpan={8} className="p-8 text-center text-slate-400">
                         No hay datos históricos con los filtros seleccionados.
                       </td>
                     </tr>
@@ -575,8 +605,11 @@ export default function InventarioPage() {
                         <td className="p-3.5 text-right font-mono font-semibold text-slate-600">
                           {k.stockInicial.toLocaleString()}
                         </td>
+                        <td className="p-3.5 text-right font-mono font-bold text-blue-700">
+                          {k.produccionVerde > 0 ? `+${k.produccionVerde.toLocaleString()}` : "0"}
+                        </td>
                         <td className="p-3.5 text-right font-mono font-bold text-emerald-700">
-                          {k.produccionDia > 0 ? `+${k.produccionDia.toLocaleString()}` : "0"}
+                          {k.produccionTerminada > 0 ? `+${k.produccionTerminada.toLocaleString()}` : "0"}
                         </td>
                         <td className="p-3.5 text-right font-mono font-bold text-rose-700">
                           {k.salidasDia > 0 ? `-${k.salidasDia.toLocaleString()}` : "0"}

@@ -217,6 +217,8 @@ export default function ProduccionPage() {
     return { horno: h, quantity: qty };
   });
 
+  const grandTotalProduction = totalProductionByHorno.reduce((acc, curr) => acc + curr.quantity, 0);
+
   const handleOpenBatchModal = () => {
     const nextFolio = store.getNextFolioNumber();
     const initialQty: Record<string, number> = {};
@@ -282,8 +284,8 @@ export default function ProduccionPage() {
           </div>
         </div>
 
-        {/* Resumen de Producción por Horno (Horno 1, Horno 2, Horno 3) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Resumen de Producción por Horno (Horno 1, Horno 2, Horno 3) + Total */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           {totalProductionByHorno.map((item) => (
             <div key={item.horno} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
@@ -295,6 +297,16 @@ export default function ProduccionPage() {
               </div>
             </div>
           ))}
+          
+          <div className="bg-orange-50/80 p-4 rounded-xl border border-orange-200 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-black text-orange-800 block uppercase tracking-tight">Total Vaciado</span>
+              <span className="text-lg font-mono font-black text-orange-950">{grandTotalProduction.toLocaleString()} <span className="text-[10px] font-bold text-orange-800">unid.</span></span>
+            </div>
+            <div className="w-9 h-9 rounded-lg bg-orange-500 flex items-center justify-center text-white shadow-md shadow-orange-500/30">
+              <Layers className="w-5 h-5" />
+            </div>
+          </div>
         </div>
 
         {/* Matriz de Vaciados Registrados con Filtros por Horno y Tipo de Ladrillo */}
@@ -375,6 +387,34 @@ export default function ProduccionPage() {
                     const vaciadosSameDate = batches.filter(
                       (item) => item.production_date === b.production_date
                     );
+
+                    // Agrupar vaciados por folio o llave única para mostrar "1 Vaciado = Multiples Ladrillos"
+                    const groupedVaciados = Object.values(
+                      vaciadosSameDate.reduce((acc, curr) => {
+                        const key = curr.folio_number || `${curr.horno}-${curr.shift}-${curr.operator_id}`;
+                        if (!acc[key]) {
+                          acc[key] = {
+                            id: curr.id,
+                            folio_number: curr.folio_number,
+                            horno: curr.horno,
+                            shift: curr.shift,
+                            operator: curr.operator,
+                            status: curr.status,
+                            notes: curr.notes,
+                            total_quantity: 0,
+                            items: []
+                          };
+                        }
+                        acc[key].items.push({
+                          brick_type: curr.brick_type,
+                          quantity_produced: curr.quantity_produced
+                        });
+                        acc[key].total_quantity += curr.quantity_produced;
+                        return acc;
+                      }, {} as Record<string, any>)
+                    );
+
+                    const totalProducidoDia = groupedVaciados.reduce((sum, g: any) => sum + g.total_quantity, 0);
 
                     return (
                       <React.Fragment key={`${b.id}-${index}`}>
@@ -469,7 +509,7 @@ export default function ProduccionPage() {
                                           DESGLOSE DE VACIADOS REALIZADOS — FECHA {b.production_date}
                                         </span>
                                         <span className="bg-orange-500/20 text-orange-400 text-[10px] font-mono px-2 py-0.5 rounded border border-orange-500/30">
-                                          {vaciadosSameDate.length} Vaciado{vaciadosSameDate.length > 1 ? "s" : ""} registrado{vaciadosSameDate.length > 1 ? "s" : ""} en esta fecha
+                                          {groupedVaciados.length} Vaciado{groupedVaciados.length > 1 ? "s" : ""} registrado{groupedVaciados.length > 1 ? "s" : ""} en esta fecha
                                         </span>
                                       </div>
                                       <p className="text-xs text-slate-400 mt-0.5">
@@ -481,18 +521,18 @@ export default function ProduccionPage() {
                                   <div className="flex items-center space-x-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
                                     <span className="text-slate-400 text-xs font-semibold">Total Producido el Día:</span>
                                     <span className="font-mono text-orange-400 font-black text-sm">
-                                      {totalVaciadoJornada.toLocaleString()} unid.
+                                      {totalProducidoDia.toLocaleString()} unid.
                                     </span>
                                   </div>
                                 </div>
 
                                 {/* Tarjetas por Número de Vaciado */}
                                 <div className="grid grid-cols-1 gap-3">
-                                  {vaciadosSameDate.map((vItem, idx) => {
-                                    const parsed = parseInsumos(vItem.notes);
+                                  {groupedVaciados.map((gItem: any, idx) => {
+                                    const parsed = parseInsumos(gItem.notes);
                                     return (
                                       <div
-                                        key={vItem.id}
+                                        key={gItem.id}
                                         className="bg-slate-800/90 border border-slate-700/80 rounded-xl p-4 space-y-3 hover:border-orange-500/40 transition shadow-sm"
                                       >
                                         {/* Fila Superior: Vaciado N°, Folio, Horno, Turno, Estado */}
@@ -501,27 +541,27 @@ export default function ProduccionPage() {
                                             <span className="px-2.5 py-1 rounded bg-orange-600 text-white font-mono font-black text-xs uppercase shadow-xs">
                                               VACIADO N° {idx + 1}
                                             </span>
-                                            {vItem.folio_number && (
+                                            {gItem.folio_number && (
                                               <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-200 font-mono font-bold text-xs border border-slate-600">
-                                                {vItem.folio_number}
+                                                {gItem.folio_number.replace("FOL-", "")}
                                               </span>
                                             )}
                                             <span className="px-2 py-0.5 rounded bg-orange-950/70 text-orange-300 border border-orange-800/50 text-xs font-bold flex items-center space-x-1">
                                               <Flame className="w-3.5 h-3.5 text-orange-400 mr-1 inline" />
-                                              <span>{vItem.horno || "Horno 1"}</span>
+                                              <span>{gItem.horno || "Horno 1"}</span>
                                             </span>
                                             <span className="px-2 py-0.5 rounded bg-slate-700/70 text-slate-300 text-xs font-medium capitalize flex items-center">
                                               <Clock className="w-3 h-3 text-slate-400 mr-1 inline" />
-                                              <span>Turno {vItem.shift}</span>
+                                              <span>Turno {gItem.shift}</span>
                                             </span>
                                           </div>
 
                                           <div className="flex items-center space-x-2">
                                             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-950 text-emerald-300 border border-emerald-700">
-                                              {vItem.status || "TERMINADO"}
+                                              {gItem.status || "TERMINADO"}
                                             </span>
                                             <span className="font-mono font-black text-orange-400 text-sm bg-slate-950 px-3 py-1 rounded-lg border border-slate-700">
-                                              {vItem.quantity_produced.toLocaleString()} <span className="text-xs font-normal text-slate-400">unid.</span>
+                                              {gItem.total_quantity.toLocaleString()} <span className="text-xs font-normal text-slate-400">unid.</span>
                                             </span>
                                           </div>
                                         </div>
@@ -532,15 +572,22 @@ export default function ProduccionPage() {
                                             <User className="w-4 h-4 text-orange-400 shrink-0" />
                                             <div>
                                               <span className="text-slate-400 text-[10px] block font-semibold">MAESTRO MOLDEADOR / OPERARIO</span>
-                                              <span className="font-bold text-white text-xs">{vItem.operator?.full_name || "Angel (Maestro Moldeador)"}</span>
+                                              <span className="font-bold text-white text-xs">{gItem.operator?.full_name || "Angel (Maestro Moldeador)"}</span>
                                             </div>
                                           </div>
 
-                                          <div className="flex items-center space-x-2.5 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                                            <Layers className="w-4 h-4 text-orange-400 shrink-0" />
-                                            <div>
-                                              <span className="text-slate-400 text-[10px] block font-semibold">TIPO DE LADRILLO MOLDEADO</span>
-                                              <span className="font-bold text-white text-xs">{vItem.brick_type?.name || "Ladrillo 6H Normal de 1ra"}</span>
+                                          <div className="flex items-start space-x-2.5 bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
+                                            <Layers className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
+                                            <div className="flex-1">
+                                              <span className="text-slate-400 text-[10px] block font-semibold mb-1">TIPOS DE LADRILLO MOLDEADOS</span>
+                                              <div className="space-y-1">
+                                                {gItem.items.map((it: any, i: number) => (
+                                                  <div key={i} className="flex items-center justify-between bg-slate-950/50 px-2 py-1 rounded border border-slate-800/50">
+                                                    <span className="font-bold text-white text-[11px]">{it.brick_type?.name || "Ladrillo"}</span>
+                                                    <span className="font-mono text-orange-300 font-bold text-[11px]">{it.quantity_produced.toLocaleString()} unid.</span>
+                                                  </div>
+                                                ))}
+                                              </div>
                                             </div>
                                           </div>
                                         </div>

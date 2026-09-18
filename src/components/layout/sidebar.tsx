@@ -75,7 +75,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     name: "Producción",
     icon: Factory,
-    allowedRoles: ["superadmin", "admin", "produccion"],
+    allowedRoles: ["superadmin", "admin", "produccion", "ventas"],
     subItems: [
       {
         name: "Vaciados",
@@ -83,17 +83,16 @@ const NAV_ITEMS: NavItem[] = [
         icon: Flame,
       },
       {
+        name: "Inventario",
+        href: "/inventario",
+        icon: Boxes,
+      },
+      {
         name: "Catálogo de Productos",
         href: "/produccion/catalogo",
         icon: Layers,
       },
     ],
-  },
-  {
-    name: "Inventario",
-    href: "/inventario",
-    icon: Boxes,
-    allowedRoles: ["superadmin", "admin", "produccion", "ventas"],
   },
   {
     name: "Ventas & Pedidos",
