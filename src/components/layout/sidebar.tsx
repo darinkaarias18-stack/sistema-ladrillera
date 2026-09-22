@@ -101,7 +101,7 @@ const NAV_ITEMS: NavItem[] = [
     allowedRoles: ["superadmin", "admin", "ventas"],
   },
   {
-    name: "Caja General",
+    name: "Libro de Compra y Venta",
     href: "/caja",
     icon: Wallet,
     allowedRoles: ["superadmin", "admin", "ventas"],

@@ -63,7 +63,8 @@ export default function ReportesPage() {
 
   // Margen estimado por ladrillo
   const marginData = brickTypes.map((bt) => ({
-    name: bt.name.split(" ")[1] || bt.name,
+    fullName: bt.name,
+    type: bt.name.split(" ")[1] || bt.name,
     precioVenta: bt.sale_price,
     costoEst: bt.estimated_cost || 0,
     margenBruto: (bt.sale_price - (bt.estimated_cost || 0)).toFixed(2),
@@ -153,6 +154,7 @@ export default function ReportesPage() {
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500 font-semibold uppercase">
+                  <th className="pb-3">Nombre del Ladrillo</th>
                   <th className="pb-3">Tipo de Ladrillo</th>
                   <th className="pb-3 text-right">Precio Venta (Bs.)</th>
                   <th className="pb-3 text-right">Costo Estimado (Bs.)</th>
@@ -165,7 +167,8 @@ export default function ReportesPage() {
                   const pct = ((Number(m.margenBruto) / m.precioVenta) * 100).toFixed(1);
                   return (
                     <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-3 font-bold text-slate-900">{m.name}</td>
+                      <td className="py-3 font-bold text-slate-900">{m.fullName}</td>
+                      <td className="py-3 text-slate-700">{m.type}</td>
                       <td className="py-3 text-right font-mono font-semibold text-slate-700">
                         Bs. {m.precioVenta.toFixed(2)}
                       </td>

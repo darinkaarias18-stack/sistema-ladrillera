@@ -11,7 +11,8 @@ export default function CajaPage() {
   const [runningBalance, setRunningBalance] = useState<number>(0);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const boliviaDate = new Date().toLocaleDateString("en-CA", { timeZone: "America/La_Paz" });
+  const [date, setDate] = useState(boliviaDate);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState(500);
   const [type, setType] = useState<"ingreso" | "egreso">("egreso");
@@ -45,14 +46,14 @@ export default function CajaPage() {
 
   return (
     <>
-      <Header title="Libro de Caja General & Flujo de Efectivo" />
+      <Header title="Libro de Compra y Venta" />
 
       <div className="p-6 space-y-6">
         {/* Balance Card */}
         <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-orange-950 text-white p-6 rounded-2xl shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <span className="text-xs uppercase tracking-wider text-orange-400 font-semibold">
-              Saldo Actual en Caja General
+              Saldo Actual en Libro de Compra y Venta
             </span>
             <h2 className="text-3xl font-extrabold mt-1">
               Bs. {runningBalance.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
@@ -67,7 +68,7 @@ export default function CajaPage() {
             className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition whitespace-nowrap"
           >
             <Plus className="w-4 h-4" />
-            <span>Registrar Movimiento de Caja</span>
+            <span>Registrar Movimiento</span>
           </button>
         </div>
 
@@ -85,30 +86,48 @@ export default function CajaPage() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
                   <th className="p-3.5">Fecha</th>
-                  <th className="p-3.5">Descripción del Movimiento</th>
-                  <th className="p-3.5">Categoría</th>
-                  <th className="p-3.5 text-right">Monto (Bs.)</th>
+                  <th className="p-3.5">Recibo/Factura</th>
+                  <th className="p-3.5">Descripción</th>
+                  <th className="p-3.5 text-right">Debe</th>
+                  <th className="p-3.5 text-right">Haber</th>
+                  <th className="p-3.5 text-right">Saldo</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {entries.map((item) => {
-                  const isIngreso = item.amount > 0;
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50">
-                      <td className="p-3.5 font-mono text-slate-600">{item.movement_date}</td>
-                      <td className="p-3.5 font-medium text-slate-900">{item.description}</td>
-                      <td className="p-3.5">
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-slate-100 text-slate-700">
-                          {item.category}
-                        </span>
-                      </td>
-                      <td className="p-3.5 text-right font-mono font-bold text-sm">
-                        <span className={isIngreso ? "text-emerald-700" : "text-red-600"}>
-                          {isIngreso ? "+" : ""} Bs. {item.amount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
-                        </span>
-                      </td>
-                    </tr>
-                  );
+                {[...entries]
+                  .sort((a, b) => {
+                    const dateCompare = a.movement_date.localeCompare(b.movement_date);
+                    if (dateCompare !== 0) return dateCompare;
+                    return (a.created_at || "").localeCompare(b.created_at || "");
+                  })
+                  .reduce((acc, current) => {
+                    const lastBalance = acc.length > 0 ? acc[acc.length - 1].saldo : 0;
+                    acc.push({ ...current, saldo: lastBalance + current.amount });
+                    return acc;
+                  }, [] as (CashLedgerEntry & { saldo: number })[])
+                  .map((item) => {
+                    const isIngreso = item.amount > 0;
+                    const debe = isIngreso ? item.amount : null;
+                    const haber = !isIngreso ? Math.abs(item.amount) : null;
+
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="p-3.5 font-mono text-slate-600">{item.movement_date}</td>
+                        <td className="p-3.5 font-mono text-slate-500">
+                          {item.reference_id ? item.reference_id.slice(-6).toUpperCase() : item.id.slice(-6).toUpperCase()}
+                        </td>
+                        <td className="p-3.5 font-medium text-slate-900">{item.description}</td>
+                        <td className="p-3.5 text-right font-mono font-medium text-emerald-700">
+                          {debe ? debe.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-medium text-red-600">
+                          {haber ? haber.toLocaleString("es-BO", { minimumFractionDigits: 2 }) : ""}
+                        </td>
+                        <td className="p-3.5 text-right font-mono font-bold text-slate-800">
+                          {item.saldo.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    );
                 })}
               </tbody>
             </table>
@@ -146,7 +165,10 @@ export default function CajaPage() {
                     type="date"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                    min={boliviaDate}
+                    max={boliviaDate}
+                    readOnly
+                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-500 cursor-not-allowed"
                   />
                 </div>
               </div>
