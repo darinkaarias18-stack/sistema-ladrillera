@@ -39,10 +39,15 @@ alter table employee_attendance enable row level security;
 alter table employee_settlements enable row level security;
 
 -- Políticas de RLS
+drop policy if exists "Auth read attendance" on employee_attendance;
+drop policy if exists "Auth insert attendance" on employee_attendance;
+drop policy if exists "Auth update attendance" on employee_attendance;
 create policy "Auth read attendance" on employee_attendance for select using (auth.role() = 'authenticated');
 create policy "Auth insert attendance" on employee_attendance for insert with check (auth.role() = 'authenticated');
 create policy "Auth update attendance" on employee_attendance for update using (auth.role() = 'authenticated');
 
+drop policy if exists "Auth read settlements" on employee_settlements;
+drop policy if exists "Auth insert settlements" on employee_settlements;
 create policy "Auth read settlements" on employee_settlements for select using (auth.role() = 'authenticated');
 create policy "Auth insert settlements" on employee_settlements for insert with check (auth.role() = 'authenticated');
 

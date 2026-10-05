@@ -307,6 +307,41 @@ class MemoryStore {
     return newCust;
   }
 
+  getOrders() {
+    return this.orders.map((o) => ({
+      ...o,
+      customer: this.customers.find((c) => c.id === o.customer_id),
+      driver: this.employees.find((e) => e.id === o.driver_id),
+      items: (o.items || []).map((item) => ({
+        ...item,
+        brick_type: this.brickTypes.find((bt) => bt.id === item.brick_type_id),
+      })),
+    })).sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  createOrder(orderData: Omit<Order, "id" | "created_at">): Order {
+    const newOrder: Order = {
+      ...orderData,
+      id: `ord-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    this.orders.unshift(newOrder);
+
+    // Descontar inventario de bodega_terminado (Reserva física del pedido)
+    (newOrder.items || []).forEach((item) => {
+      this.addInventoryMovement({
+        brick_type_id: item.brick_type_id,
+        movement_type: "salida",
+        quantity: item.quantity,
+        from_location: "bodega_terminado",
+        reference_id: newOrder.id,
+        reference_type: "order",
+      });
+    });
+
+    return newOrder;
+  }
+
   getSales() {
     return this.sales.map((s) => ({
       ...s,
@@ -351,6 +386,73 @@ class MemoryStore {
     return newSale;
   }
 
+  convertOrderToSale(orderId: string, paymentMethod: "efectivo" | "transferencia" | "credito"): Sale | null {
+    const orderIndex = this.orders.findIndex(o => o.id === orderId);
+    if (orderIndex === -1) return null;
+    
+    const order = this.orders[orderIndex];
+    order.status = "vendido";
+    
+    const totalAmount = (order.items || []).reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
+    
+    const newSale: Sale = {
+      id: `sale-${Date.now()}`,
+      order_id: order.id,
+      customer_id: order.customer_id,
+      total_amount: totalAmount,
+      payment_method: paymentMethod,
+      created_at: new Date().toISOString(),
+      items: (order.items || []).map(item => ({
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        sale_id: "",
+        brick_type_id: item.brick_type_id,
+        quantity: item.quantity,
+        unit_price: item.unit_price
+      }))
+    };
+    
+    if (newSale.items) {
+      newSale.items.forEach(i => i.sale_id = newSale.id);
+    }
+    
+    this.sales.unshift(newSale);
+    
+    // No descontamos inventario nuevamente porque createOrder ya lo descontó (reserva física).
+
+    this.addCashLedgerEntry({
+      movement_date: getTodayDateString(),
+      description: `Venta desde Pedido #${order.id.slice(-6)} - ${paymentMethod.toUpperCase()}`,
+      amount: newSale.total_amount,
+      category: "venta",
+      reference_type: "sale",
+      reference_id: newSale.id,
+    });
+    
+    return newSale;
+  }
+
+  cancelOrder(orderId: string): Order | null {
+    const orderIndex = this.orders.findIndex(o => o.id === orderId);
+    if (orderIndex === -1) return null;
+    
+    const order = this.orders[orderIndex];
+    order.status = "cancelado";
+    
+    // Restaurar inventario (deshacer reserva)
+    (order.items || []).forEach(item => {
+      this.addInventoryMovement({
+        brick_type_id: item.brick_type_id,
+        movement_type: "entrada",
+        quantity: item.quantity,
+        to_location: "bodega_terminado",
+        reference_id: order.id,
+        reference_type: "order_cancellation",
+      });
+    });
+    
+    return order;
+  }
+
   // PAYROLL & ADVANCES
   getPayrollPeriods() {
     return [...this.payrollPeriods].sort((a, b) => b.start_date.localeCompare(a.start_date));
@@ -367,47 +469,8 @@ class MemoryStore {
     };
     this.payrollPeriods.unshift(newPeriod);
 
-    // Generar automáticos payroll_details para los empleados que tengan esa frecuencia
-    const eligibleEmployees = this.employees.filter((e) => e.pay_frequency === frequency && e.active);
-
-    eligibleEmployees.forEach((emp) => {
-      let productionBonus = 0;
-      let baseAmount = emp.base_salary;
-
-      // Si es a destajo, calcular total de unidades en el periodo * tarifa por millar
-      if (emp.contract_type === "destajo") {
-        const empBatches = this.batches.filter(
-          (b) =>
-            b.operator_id === emp.id &&
-            b.production_date >= startDate &&
-            b.production_date <= endDate
-        );
-        const totalUnits = empBatches.reduce((acc, b) => acc + b.quantity_produced, 0);
-        productionBonus = (totalUnits / 1000) * emp.rate_per_thousand;
-        baseAmount = 0;
-      }
-
-      const antiquityBonus = (baseAmount * emp.antiquity_bonus_pct) / 100;
-      const frontierBonus = emp.frontier_bonus;
-      const totalEarned = baseAmount + antiquityBonus + frontierBonus + productionBonus;
-
-      this.payrollDetails.push({
-        id: `pay-${Date.now()}-${emp.id}`,
-        period_id: newPeriod.id,
-        employee_id: emp.id,
-        base_amount: baseAmount,
-        antiquity_bonus: antiquityBonus,
-        frontier_bonus: frontierBonus,
-        production_bonus: productionBonus,
-        total_earned: totalEarned,
-        deductions: 0,
-        mid_period_advance: frequency === "mensual" ? baseAmount * 0.5 : 0,
-        personal_advances: 0,
-        net_pay: totalEarned - (frequency === "mensual" ? baseAmount * 0.5 : 0),
-        paid: false,
-        signed: false,
-      });
-    });
+    // The user requested that the table should be completely empty when a new period is created.
+    // Payroll details will be generated only when an advance is registered, or manually processed.
 
     return newPeriod;
   }
@@ -434,13 +497,35 @@ class MemoryStore {
     this.advances.unshift(newAdv);
 
     // Sumar a personal_advances en el detalle de planilla activo del empleado
-    const detail = this.payrollDetails.find(
-      (pd) => pd.employee_id === advance.employee_id && !pd.paid
+    let detail = this.payrollDetails.find(
+      (pd) => pd.employee_id === advance.employee_id && 
+              (!advance.period_id || pd.period_id === advance.period_id) && 
+              !pd.paid
     );
+
     if (detail) {
       detail.personal_advances += advance.amount;
       detail.net_pay =
         detail.total_earned - detail.deductions - detail.mid_period_advance - detail.personal_advances;
+    } else if (advance.period_id) {
+      // Si el empleado no estaba en esta planilla, lo agregamos con sus valores base en cero
+      const newDetail: PayrollDetail = {
+        id: `pd-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        period_id: advance.period_id,
+        employee_id: advance.employee_id,
+        base_amount: 0,
+        production_bonus: 0,
+        antiquity_bonus: 0,
+        frontier_bonus: 0,
+        total_earned: 0,
+        deductions: 0,
+        mid_period_advance: 0,
+        personal_advances: advance.amount,
+        net_pay: -advance.amount,
+        paid: false,
+        signed: false
+      };
+      this.payrollDetails.push(newDetail);
     }
 
     // Registrar egreso automático en Caja General

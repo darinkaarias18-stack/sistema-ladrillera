@@ -106,6 +106,7 @@ create table if not exists customers (
   name text not null,
   phone text,
   address text,
+  department text,
   created_at timestamptz default now()
 );
 

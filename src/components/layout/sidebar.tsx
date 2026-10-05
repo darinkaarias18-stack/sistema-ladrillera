@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
@@ -18,11 +18,13 @@ import {
   Flame,
   Layers,
   CalendarDays,
-  FileText
+  FileText,
+  LogOut
 } from "lucide-react";
 import { UserRole } from "@/types/database.types";
 import { useState, useEffect } from "react";
 import { store } from "@/lib/store";
+import { createClient } from "@/lib/supabase/client";
 
 interface SubNavItem {
   name: string;
@@ -96,9 +98,25 @@ const NAV_ITEMS: NavItem[] = [
   },
   {
     name: "Ventas & Pedidos",
-    href: "/ventas",
     icon: ShoppingCart,
     allowedRoles: ["superadmin", "admin", "ventas"],
+    subItems: [
+      {
+        name: "Clientes",
+        href: "/ventas/clientes",
+        icon: Users,
+      },
+      {
+        name: "Pedidos",
+        href: "/ventas/pedidos",
+        icon: FileText,
+      },
+      {
+        name: "Ventas",
+        href: "/ventas",
+        icon: ShoppingCart,
+      }
+    ]
   },
   {
     name: "Libro de Compra y Venta",
@@ -112,14 +130,23 @@ const NAV_ITEMS: NavItem[] = [
     icon: BarChart3,
     allowedRoles: ["superadmin", "admin", "produccion", "ventas"],
   },
+  {
+    name: "Gestión de Usuarios",
+    href: "/admin/usuarios",
+    icon: ShieldCheck,
+    allowedRoles: ["superadmin", "admin"],
+  },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const supabase = createClient();
   const [currentRole, setCurrentRoleState] = useState<UserRole>(store.getCurrentRole());
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     Producción: true,
     Empleados: true,
+    "Ventas & Pedidos": true,
   });
 
   const toggleMenu = (name: string) => {
@@ -127,10 +154,27 @@ export function Sidebar() {
   };
 
   useEffect(() => {
+    const fetchUserRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+        if (data?.role) {
+          handleRoleChange(data.role.toLowerCase() as UserRole);
+        }
+      }
+    };
+    fetchUserRole();
+  }, []);
+
+  useEffect(() => {
     NAV_ITEMS.forEach((item) => {
       if (item.subItems) {
         const isActive = item.subItems.some((sub) =>
-          sub.href === "/produccion" || sub.href === "/empleados"
+          sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas"
             ? pathname === sub.href
             : pathname.startsWith(sub.href)
         );
@@ -171,7 +215,7 @@ export function Sidebar() {
             // Si es la sección desplegable
             if (item.subItems) {
               const isActive = item.subItems.some((sub) =>
-                sub.href === "/produccion" || sub.href === "/empleados"
+                sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas"
                   ? pathname === sub.href
                   : pathname.startsWith(sub.href)
               );
@@ -204,7 +248,7 @@ export function Sidebar() {
                     <div className="pl-4 space-y-1 pt-0.5">
                       {item.subItems.map((sub) => {
                         const isSubActive =
-                          sub.href === "/produccion" || sub.href === "/empleados"
+                          sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas"
                             ? pathname === sub.href
                             : pathname.startsWith(sub.href);
                         const SubIcon = sub.icon;

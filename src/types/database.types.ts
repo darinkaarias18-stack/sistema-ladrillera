@@ -10,7 +10,7 @@ export type InventoryLocation = 'patio_secado' | 'horno' | 'bodega_terminado';
 
 export type MovementType = 'entrada' | 'salida' | 'traslado' | 'ajuste';
 
-export type OrderStatus = 'pendiente' | 'en_produccion' | 'listo' | 'entregado' | 'cancelado';
+export type OrderStatus = 'pendiente' | 'vendido' | 'cancelado';
 
 export type PaymentMethod = 'efectivo' | 'transferencia' | 'credito';
 
@@ -29,6 +29,8 @@ export interface Profile {
   id: string;
   full_name: string;
   role: UserRole;
+  email?: string;
+  position?: string;
   created_at: string;
 }
 
@@ -106,6 +108,7 @@ export interface Customer {
   name: string;
   phone?: string;
   address?: string;
+  department?: string;
   created_at?: string;
 }
 
@@ -123,10 +126,13 @@ export interface Order {
   customer_id?: string;
   status: OrderStatus;
   delivery_date?: string;
+  delivery_type?: 'envio' | 'recojo';
+  driver_id?: string;
   notes?: string;
   created_at: string;
   customer?: Customer;
   items?: OrderItem[];
+  driver?: Employee;
 }
 
 export interface SaleItem {

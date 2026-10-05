@@ -39,7 +39,8 @@ export default function PlanillasPage() {
     if (pers.length > 0) {
       const activeId = selectedPeriodId || pers[0].id;
       setSelectedPeriodId(activeId);
-      setPayrollDetails(store.getPayrollDetails(activeId));
+      const details = store.getPayrollDetails(activeId);
+      setPayrollDetails(details);
     }
   };
 
