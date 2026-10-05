@@ -475,9 +475,6 @@ class MemoryStore {
     return newPeriod;
   }
 
-  getPayrollPeriods() {
-    return this.payrollPeriods;
-  }
 
   getPayrollDetails(periodId: string) {
     return this.payrollDetails
