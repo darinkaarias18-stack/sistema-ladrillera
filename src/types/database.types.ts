@@ -121,12 +121,18 @@ export interface OrderItem {
   brick_type?: BrickType;
 }
 
+export type DeliveryStatus = 'programado' | 'entregado' | 'cancelado';
+export type DeliveryType = 'fabrica' | 'obra' | 'exportacion' | 'envio' | 'recojo';
+
 export interface Order {
   id: string;
   customer_id?: string;
   status: OrderStatus;
   delivery_date?: string;
-  delivery_type?: 'envio' | 'recojo';
+  delivery_type?: DeliveryType;
+  delivery_status?: DeliveryStatus;
+  delivery_address?: string;
+  contact_phone?: string;
   driver_id?: string;
   notes?: string;
   created_at: string;

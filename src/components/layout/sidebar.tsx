@@ -19,7 +19,8 @@ import {
   Layers,
   CalendarDays,
   FileText,
-  LogOut
+  LogOut,
+  Truck
 } from "lucide-react";
 import { UserRole } from "@/types/database.types";
 import { useState, useEffect } from "react";
@@ -97,8 +98,8 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   {
-    name: "Ventas & Pedidos",
-    icon: ShoppingCart,
+    name: "Pedidos & Entregas",
+    icon: Truck,
     allowedRoles: ["superadmin", "admin", "ventas"],
     subItems: [
       {
@@ -112,9 +113,9 @@ const NAV_ITEMS: NavItem[] = [
         icon: FileText,
       },
       {
-        name: "Ventas",
-        href: "/ventas",
-        icon: ShoppingCart,
+        name: "Entregas",
+        href: "/entregas",
+        icon: Truck,
       }
     ]
   },
@@ -146,7 +147,7 @@ export function Sidebar() {
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     Producción: true,
     Empleados: true,
-    "Ventas & Pedidos": true,
+    "Pedidos & Entregas": true,
   });
 
   const toggleMenu = (name: string) => {
@@ -174,7 +175,7 @@ export function Sidebar() {
     NAV_ITEMS.forEach((item) => {
       if (item.subItems) {
         const isActive = item.subItems.some((sub) =>
-          sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas"
+          sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas" || sub.href === "/entregas"
             ? pathname === sub.href
             : pathname.startsWith(sub.href)
         );
@@ -215,7 +216,7 @@ export function Sidebar() {
             // Si es la sección desplegable
             if (item.subItems) {
               const isActive = item.subItems.some((sub) =>
-                sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas"
+                sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas" || sub.href === "/entregas"
                   ? pathname === sub.href
                   : pathname.startsWith(sub.href)
               );
@@ -248,7 +249,7 @@ export function Sidebar() {
                     <div className="pl-4 space-y-1 pt-0.5">
                       {item.subItems.map((sub) => {
                         const isSubActive =
-                          sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas"
+                          sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas" || sub.href === "/entregas"
                             ? pathname === sub.href
                             : pathname.startsWith(sub.href);
                         const SubIcon = sub.icon;

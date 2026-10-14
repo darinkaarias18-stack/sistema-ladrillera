@@ -15,7 +15,8 @@ import {
   InventoryLocation,
   MovementType,
   EmployeeAttendance,
-  EmployeeSettlement
+  EmployeeSettlement,
+  DeliveryStatus
 } from "@/types/database.types";
 import {
   INITIAL_EMPLOYEES,
@@ -26,7 +27,8 @@ import {
   INITIAL_SALES,
   INITIAL_PAYROLL_PERIODS,
   INITIAL_PAYROLL_DETAILS,
-  INITIAL_CASH_LEDGER
+  INITIAL_CASH_LEDGER,
+  INITIAL_ORDERS
 } from "./mock-data";
 import { getTodayDateString } from "./dates";
 
@@ -37,7 +39,7 @@ class MemoryStore {
   private movements: InventoryMovement[] = [];
   private batches: ProductionBatch[] = [...INITIAL_PRODUCTION_BATCHES];
   private customers: Customer[] = [...INITIAL_CUSTOMERS];
-  private orders: Order[] = [];
+  private orders: Order[] = [...INITIAL_ORDERS];
   private sales: Sale[] = [...INITIAL_SALES];
   private payrollPeriods: PayrollPeriod[] = [...INITIAL_PAYROLL_PERIODS];
   private payrollDetails: PayrollDetail[] = [...INITIAL_PAYROLL_DETAILS];
@@ -322,6 +324,7 @@ class MemoryStore {
   createOrder(orderData: Omit<Order, "id" | "created_at">): Order {
     const newOrder: Order = {
       ...orderData,
+      delivery_status: orderData.delivery_status || "programado",
       id: `ord-${Date.now()}`,
       created_at: new Date().toISOString(),
     };
@@ -340,6 +343,32 @@ class MemoryStore {
     });
 
     return newOrder;
+  }
+
+  updateOrderDeliveryStatus(orderId: string, deliveryStatus: DeliveryStatus): Order | null {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return null;
+    order.delivery_status = deliveryStatus;
+
+    if (deliveryStatus === "entregado") {
+      order.status = "vendido";
+      this.convertOrderToSale(order.id, "efectivo");
+    } else if (deliveryStatus === "cancelado") {
+      order.status = "cancelado";
+    } else {
+      if (order.status === "vendido") {
+        order.status = "pendiente";
+      }
+    }
+
+    return order;
+  }
+
+  updateOrderDriver(orderId: string, driverId: string): Order | null {
+    const order = this.orders.find(o => o.id === orderId);
+    if (!order) return null;
+    order.driver_id = driverId;
+    return order;
   }
 
   getSales() {
@@ -386,12 +415,18 @@ class MemoryStore {
     return newSale;
   }
 
-  convertOrderToSale(orderId: string, paymentMethod: "efectivo" | "transferencia" | "credito"): Sale | null {
+  convertOrderToSale(orderId: string, paymentMethod: "efectivo" | "transferencia" | "credito" = "efectivo"): Sale | null {
     const orderIndex = this.orders.findIndex(o => o.id === orderId);
     if (orderIndex === -1) return null;
     
     const order = this.orders[orderIndex];
     order.status = "vendido";
+    order.delivery_status = "entregado";
+
+    const existingSale = this.sales.find(s => s.order_id === order.id);
+    if (existingSale) {
+      return existingSale;
+    }
     
     const totalAmount = (order.items || []).reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
     

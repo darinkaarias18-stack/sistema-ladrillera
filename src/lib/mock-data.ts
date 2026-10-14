@@ -332,3 +332,53 @@ export const INITIAL_CASH_LEDGER: CashLedgerEntry[] = [
     reference_id: "pay-3"
   }
 ];
+
+export const INITIAL_ORDERS: Order[] = [
+  {
+    id: "ord-897501",
+    customer_id: "cust-2",
+    status: "pendiente",
+    delivery_date: "2026-10-14",
+    delivery_type: "obra",
+    delivery_status: "programado",
+    delivery_address: "Calle Industrial #12, Zona Norte",
+    contact_phone: "689-11223",
+    driver_id: "emp-4",
+    notes: "Entregar en obra en horario de la mañana",
+    created_at: "2026-10-13T10:00:00Z",
+    items: [
+      { id: "item-init-1", order_id: "ord-897501", brick_type_id: "brick-1", quantity: 3000, unit_price: 1.80 }
+    ]
+  },
+  {
+    id: "ord-897450",
+    customer_id: "cust-1",
+    status: "pendiente",
+    delivery_date: "2026-10-15",
+    delivery_type: "exportacion",
+    delivery_status: "programado",
+    delivery_address: "Av. Las Américas #450 (Despacho Frontera)",
+    contact_phone: "712-34567",
+    driver_id: "emp-4",
+    notes: "Descargar con cuidado cerca al depósito",
+    created_at: "2026-10-12T14:30:00Z",
+    items: [
+      { id: "item-init-2", order_id: "ord-897450", brick_type_id: "brick-3", quantity: 5000, unit_price: 1.90 }
+    ]
+  },
+  {
+    id: "ord-897320",
+    customer_id: "cust-3",
+    status: "vendido",
+    delivery_date: "2026-10-13",
+    delivery_type: "fabrica",
+    delivery_status: "entregado",
+    delivery_address: "Retiro en Planta Principal",
+    contact_phone: "700-98765",
+    notes: "Camión del cliente recogió el lote completo",
+    created_at: "2026-10-11T09:15:00Z",
+    items: [
+      { id: "item-init-3", order_id: "ord-897320", brick_type_id: "brick-5", quantity: 2000, unit_price: 2.10 }
+    ]
+  }
+];
