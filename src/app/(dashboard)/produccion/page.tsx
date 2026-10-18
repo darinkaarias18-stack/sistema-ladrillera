@@ -71,6 +71,11 @@ export default function ProduccionPage() {
     aditivosKg: 5,
   });
 
+  // Estados de la Hoja de Control Físico (Sección 6 y Firmas)
+  const [noProductionReason, setNoProductionReason] = useState("");
+  const [supervisorName, setSupervisorName] = useState("Victor Rodolfo (Supervisor Planta)");
+  const [digitadorName, setDigitadorName] = useState("Darinka Arias (Digitador Oficina)");
+
   // Filtros de tabla
   const [selectedHornoFilter, setSelectedHornoFilter] = useState<string>("todos");
   const [selectedBrickTypeFilter, setSelectedBrickTypeFilter] = useState<string>("todos");
@@ -81,6 +86,7 @@ export default function ProduccionPage() {
     register: registerBatch,
     handleSubmit: handleSubmitBatch,
     reset: resetBatch,
+    watch: watchBatch,
     formState: { errors: batchErrors },
   } = useForm<ProductionBatchInput>({
     resolver: zodResolver(productionBatchSchema),
@@ -99,6 +105,11 @@ export default function ProduccionPage() {
       notes: "",
     },
   });
+
+  const watchedOperatorId = watchBatch("operatorId");
+  const selectedOperatorName =
+    employees.find((e) => e.id === watchedOperatorId)?.full_name ||
+    "Operario no seleccionado";
 
   const loadData = () => {
     setBatches(store.getProductionBatches());
@@ -142,38 +153,66 @@ export default function ProduccionPage() {
   const onSubmitBatch = (data: ProductionBatchInput) => {
     const itemsToSave = Object.entries(brickQuantities).filter(([_, qty]) => qty > 0);
 
-    if (itemsToSave.length === 0) {
-      alert("Por favor ingrese una cantidad mayor a cero para al menos un tipo de ladrillo.");
+    if (itemsToSave.length === 0 && !noProductionReason.trim()) {
+      alert("Por favor ingrese una cantidad mayor a cero para al menos un tipo de ladrillo, o complete la Sección 6 justificando la actividad en caso de que no haya habido producción.");
       return;
     }
 
     // Formatear texto de insumos consumidos
     const insumosText = `Arcilla: ${insumos.arcillaM3}m³, Agua: ${insumos.aguaLitros}L, Combustible: ${insumos.combustibleKg}kg, Aserrín: ${insumos.aserrinKg}kg, Aditivos: ${insumos.aditivosKg}kg`;
-    const fullNotes = data.notes
-      ? `[INSUMOS: ${insumosText}] • ${data.notes}`
-      : `INSUMOS: ${insumosText}`;
+    
+    let fullNotes = `[INSUMOS: ${insumosText}]`;
+    if (data.notes && data.notes.trim()) {
+      fullNotes += ` • [OBSERVACIONES: ${data.notes.trim()}]`;
+    }
+    if (noProductionReason && noProductionReason.trim()) {
+      fullNotes += ` • [NO PRODUCCIÓN / ACTIVIDAD ALTERNATIVA: ${noProductionReason.trim()}]`;
+    }
+    if (supervisorName && supervisorName.trim()) {
+      fullNotes += ` • [SUPERVISOR: ${supervisorName.trim()}]`;
+    }
+    if (digitadorName && digitadorName.trim()) {
+      fullNotes += ` • [DIGITADOR: ${digitadorName.trim()}]`;
+    }
 
     const todayStr = getTodayDateString();
 
-    // Guardar todos los tipos de ladrillo ingresados en una sola transacción/acción
-    itemsToSave.forEach(([brickTypeId, qty]) => {
+    if (itemsToSave.length > 0) {
+      itemsToSave.forEach(([brickTypeId, qty]) => {
+        store.upsertProductionBatch({
+          production_date: todayStr,
+          brick_type_id: brickTypeId,
+          operator_id: data.operatorId,
+          shift: data.shift,
+          quantity_produced: qty,
+          status: data.status,
+          folio_number: data.folioNumber || undefined,
+          horno: data.horno || "Horno 1",
+          hora_vaciado: data.horaVaciado || undefined,
+          sector_asignado: data.sectorAsignado || undefined,
+          notes: fullNotes,
+        });
+      });
+    } else {
+      // Registrar jornada de trabajo cuando no hubo producción
       store.upsertProductionBatch({
         production_date: todayStr,
-        brick_type_id: brickTypeId,
+        brick_type_id: brickTypes[0]?.id || "brick-1",
         operator_id: data.operatorId,
         shift: data.shift,
-        quantity_produced: qty,
-        status: data.status,
+        quantity_produced: 0,
+        status: "verde",
         folio_number: data.folioNumber || undefined,
         horno: data.horno || "Horno 1",
         hora_vaciado: data.horaVaciado || undefined,
         sector_asignado: data.sectorAsignado || undefined,
         notes: fullNotes,
       });
-    });
+    }
 
     setIsBatchModalOpen(false);
     resetBatch();
+    setNoProductionReason("");
     loadData();
   };
 
@@ -233,6 +272,7 @@ export default function ProduccionPage() {
       aserrinKg: 40,
       aditivosKg: 5,
     });
+    setNoProductionReason("");
 
     resetBatch({
       productionDate: getTodayDateString(),
@@ -665,131 +705,247 @@ export default function ProduccionPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitBatch(onSubmitBatch)} className="p-6 space-y-5 text-xs overflow-y-auto flex-1">
+            <form onSubmit={handleSubmitBatch(onSubmitBatch)} className="p-6 space-y-6 text-xs overflow-y-auto flex-1">
               <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-900 flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-amber-600 shrink-0" />
                 <span>
-                  💡 <strong>Ingreso Multiproducto & Insumos:</strong> Ingresa las cantidades producidas por ladrillo y los insumos consumidos. Usa <kbd className="bg-white border border-amber-300 px-1 py-0.5 rounded font-mono font-bold">TAB</kbd> para avanzar.
+                  📋 <strong>Planilla de Control Diario:</strong> Este formulario contiene exactamente las mismas secciones y campos que la <strong>Hoja de Control Físico de Planta</strong>.
                 </span>
               </div>
 
-              {/* Datos generales de la jornada / planilla */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                    <span>N° Folio Autogenerado</span>
-                    <span className="text-[10px] text-slate-600 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200">🔒 Inalterable</span>
-                  </label>
-                  <input
-                    {...folioRegister}
-                    readOnly
-                    type="text"
-                    placeholder="Ej. FOL-00105"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono font-bold text-slate-700 bg-slate-100 cursor-not-allowed select-none"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-semibold text-slate-700">Fecha de Vaciado *</label>
-                    <span className="text-[10px] font-extrabold bg-slate-200 text-slate-700 px-2 py-0.5 rounded border border-slate-300">
-                      🔒 Hoy (Inalterable)
+              {/* Cabecera / Encabezado de la Jornada */}
+              <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/80 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <div className="flex items-center space-x-2">
+                    <Flame className="w-4 h-4 text-orange-600" />
+                    <span className="font-bold text-slate-800 text-xs uppercase tracking-wide">Datos de Vaciado & Control de Turno</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-[10px] uppercase font-bold text-slate-500">N° Folio / Control:</span>
+                    <span className="font-mono font-black text-sm bg-white px-2.5 py-0.5 rounded border border-slate-300 text-slate-800">
+                      {store.getNextFolioNumber()}
                     </span>
                   </div>
-                  <input
-                    {...registerBatch("productionDate")}
-                    readOnly
-                    tabIndex={-1}
-                    type="date"
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-slate-100 cursor-not-allowed select-none"
-                  />
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">Horno Asignado / Destino *</label>
-                  <select
-                    {...registerBatch("horno")}
-                    ref={(e) => {
-                      registerBatch("horno").ref(e);
-                      firstInputRef.current = e as HTMLElement | null;
-                    }}
-                    tabIndex={1}
-                    className="w-full px-3 py-2 border border-orange-300 rounded-lg text-sm font-bold bg-orange-50/50 text-orange-950 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  >
-                    <option value="Horno 1">🔥 Horno 1</option>
-                    <option value="Horno 2">🔥 Horno 2</option>
-                    <option value="Horno 3">🔥 Horno 3</option>
-                  </select>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-semibold text-slate-700">Fecha de Vaciado *</label>
+                      <span className="text-[10px] font-bold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded">🔒 Inalterable</span>
+                    </div>
+                    <input
+                      {...registerBatch("productionDate")}
+                      readOnly
+                      tabIndex={-1}
+                      type="date"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 bg-slate-100 cursor-not-allowed select-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Hora de Vaciado</label>
+                    <input
+                      {...registerBatch("horaVaciado")}
+                      type="time"
+                      tabIndex={1}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">Horno Asignado / Destino *</label>
+                    <select
+                      {...registerBatch("horno")}
+                      ref={(e) => {
+                        registerBatch("horno").ref(e);
+                        firstInputRef.current = e as HTMLElement | null;
+                      }}
+                      tabIndex={2}
+                      className="w-full px-3 py-2 border border-orange-300 rounded-lg text-sm font-bold bg-orange-50/50 text-orange-950 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="Horno 1">🔥 Horno 1</option>
+                      <option value="Horno 2">🔥 Horno 2</option>
+                      <option value="Horno 3">🔥 Horno 3</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Turno de Trabajo *</label>
+                    <select
+                      {...registerBatch("shift")}
+                      tabIndex={3}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="mañana">Mañana</option>
+                      <option value="tarde">Tarde</option>
+                      <option value="extra">Extra</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Responsable *</label>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Estado de Etapa</label>
+                    <select
+                      {...registerBatch("status")}
+                      tabIndex={4}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="terminado">Terminado (Vaciado Completado)</option>
+                      <option value="en_proceso">En proceso (Moldeo en curso)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">N° Folio Asignado</label>
+                    <input
+                      {...folioRegister}
+                      readOnly
+                      type="text"
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono font-bold text-slate-600 bg-slate-100 cursor-not-allowed select-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 1. Responsable & 2. Sector Asignado */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="border border-slate-300 rounded-xl p-3.5 bg-white shadow-xs">
+                  <label className="block font-bold text-slate-800 uppercase text-xs mb-1.5 flex items-center">
+                    <span className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] mr-2">1</span>
+                    <span>1. Responsable:</span>
+                  </label>
                   <select
                     {...registerBatch("operatorId")}
-                    tabIndex={3}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    tabIndex={5}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-medium"
                   >
-                    <option value="">-- Seleccionar Operario --</option>
+                    <option value="">-- Seleccionar Maestro / Operario Responsable --</option>
                     {employees.map((e) => (
                       <option key={e.id} value={e.id}>
-                        {e.full_name}
+                        {e.full_name} {e.position ? `(${e.position})` : ""}
                       </option>
                     ))}
                   </select>
-                  {batchErrors.operatorId && <p className="text-red-500 mt-1">{batchErrors.operatorId.message}</p>}
+                  {batchErrors.operatorId && <p className="text-red-500 mt-1 text-[11px]">{batchErrors.operatorId.message}</p>}
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Turno de Trabajo *</label>
-                  <select
-                    {...registerBatch("shift")}
-                    tabIndex={4}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  >
-                    <option value="mañana">Mañana</option>
-                    <option value="tarde">Tarde</option>
-                    <option value="extra">Extra</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Hora de Vaciado</label>
-                  <input
-                    {...registerBatch("horaVaciado")}
-                    type="time"
-                    tabIndex={5}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Sector Asignado</label>
+                <div className="border border-slate-300 rounded-xl p-3.5 bg-white shadow-xs">
+                  <label className="block font-bold text-slate-800 uppercase text-xs mb-1.5 flex items-center">
+                    <span className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] mr-2">2</span>
+                    <span>2. Sector Asignado:</span>
+                  </label>
                   <input
                     {...registerBatch("sectorAsignado")}
                     type="text"
-                    placeholder="Ej. Patio 1, Cancha A..."
+                    placeholder="Ej. Patio 1, Cancha A, Nave 2..."
                     tabIndex={6}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Estado</label>
-                  <select
-                    {...registerBatch("status")}
-                    tabIndex={7}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                  >
-                    <option value="terminado">Terminado</option>
-                    <option value="en_proceso">En proceso</option>
-                  </select>
+              {/* 3. Insumos & Mezcla Utilizada */}
+              <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-800 uppercase text-xs flex items-center">
+                    <span className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] mr-2">3</span>
+                    <FlaskConical className="w-4 h-4 text-orange-600 mr-1.5" />
+                    <span>3. Insumos & Mezcla Utilizada:</span>
+                  </label>
+                  <span className="text-[10px] font-bold text-orange-800 bg-orange-100 px-2 py-0.5 rounded-full">Consumo de Materia Prima</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs bg-white p-3 rounded-lg border border-slate-200">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">• Arcilla / Tierra</label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        tabIndex={7}
+                        value={insumos.arcillaM3}
+                        onChange={(e) => setInsumos((prev) => ({ ...prev, arcillaM3: Number(e.target.value) }))}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
+                      />
+                      <span className="text-[10px] text-slate-600 font-bold">m³</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">• Agua</label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="number"
+                        step="10"
+                        min="0"
+                        tabIndex={8}
+                        value={insumos.aguaLitros}
+                        onChange={(e) => setInsumos((prev) => ({ ...prev, aguaLitros: Number(e.target.value) }))}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
+                      />
+                      <span className="text-[10px] text-slate-600 font-bold">Litros</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">• Leña / Combustible</label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="number"
+                        step="5"
+                        min="0"
+                        tabIndex={9}
+                        value={insumos.combustibleKg}
+                        onChange={(e) => setInsumos((prev) => ({ ...prev, combustibleKg: Number(e.target.value) }))}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
+                      />
+                      <span className="text-[10px] text-slate-600 font-bold">kg</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">• Aserrín / Bagazo</label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="number"
+                        step="5"
+                        min="0"
+                        tabIndex={10}
+                        value={insumos.aserrinKg}
+                        onChange={(e) => setInsumos((prev) => ({ ...prev, aserrinKg: Number(e.target.value) }))}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
+                      />
+                      <span className="text-[10px] text-slate-600 font-bold">kg</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">• Aditivos / Otros</label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        tabIndex={11}
+                        value={insumos.aditivosKg}
+                        onChange={(e) => setInsumos((prev) => ({ ...prev, aditivosKg: Number(e.target.value) }))}
+                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
+                      />
+                      <span className="text-[10px] text-slate-600 font-bold">kg</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Matriz Principal: Captura por cada Tipo de Ladrillo */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+              {/* 4. Detalle de Producción por Tipo de Ladrillo */}
+              <div className="border border-slate-300 rounded-xl overflow-hidden shadow-xs">
                 <div className="bg-slate-100 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
-                  <span className="font-bold text-slate-800 text-xs uppercase">🧱 Matriz de Producción por Tipo de Ladrillo</span>
+                  <label className="font-bold text-slate-800 text-xs uppercase flex items-center">
+                    <span className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] mr-2">4</span>
+                    <span>4. Detalle de Producción por Tipo de Ladrillo:</span>
+                  </label>
                   <span className="text-[11px] text-slate-600 font-semibold">Total Tipos: {brickTypes.length}</span>
                 </div>
 
@@ -799,16 +955,16 @@ export default function ProduccionPage() {
                       <div className="flex-1 min-w-0">
                         <span className="font-bold text-slate-900 text-xs block truncate">{bt.name}</span>
                         <span className="text-[11px] text-slate-500 truncate block">
-                          {bt.dimensions || "Estándar"} {bt.weight_kg ? `• ${bt.weight_kg} kg` : ""}
+                          Dimensiones: <strong>{bt.dimensions || "Estándar"}</strong> {bt.weight_kg ? `• Peso: ${bt.weight_kg} kg` : ""}
                         </span>
                       </div>
 
-                      <div className="w-44 flex items-center space-x-2 shrink-0">
+                      <div className="w-48 flex items-center space-x-2 shrink-0">
                         <input
                           type="number"
                           step="1"
                           min="0"
-                          tabIndex={6 + index}
+                          tabIndex={12 + index}
                           value={brickQuantities[bt.id] === 0 ? "" : brickQuantities[bt.id]}
                           onChange={(e) => handleQuantityChange(bt.id, e.target.value)}
                           placeholder="0"
@@ -829,114 +985,91 @@ export default function ProduccionPage() {
                 </div>
               </div>
 
-              {/* Registro Estructurado de Insumos y Materiales Consumidos */}
-              <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-slate-800 text-xs uppercase flex items-center">
-                    <FlaskConical className="w-4 h-4 text-orange-600 mr-1.5" />
-                    <span>Insumos & Mezcla Utilizada para la Producción</span>
-                  </span>
-                  <span className="text-[10px] font-bold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">Consumo de Materia Prima</span>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-xs">
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Arcilla / Tierra</label>
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        tabIndex={6 + brickTypes.length}
-                        value={insumos.arcillaM3}
-                        onChange={(e) => setInsumos((prev) => ({ ...prev, arcillaM3: Number(e.target.value) }))}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
-                      />
-                      <span className="text-[10px] text-slate-600 font-bold">m³</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Agua</label>
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="number"
-                        step="10"
-                        min="0"
-                        tabIndex={7 + brickTypes.length}
-                        value={insumos.aguaLitros}
-                        onChange={(e) => setInsumos((prev) => ({ ...prev, aguaLitros: Number(e.target.value) }))}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
-                      />
-                      <span className="text-[10px] text-slate-600 font-bold">Litros</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Leña / Combustible</label>
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="number"
-                        step="5"
-                        min="0"
-                        tabIndex={8 + brickTypes.length}
-                        value={insumos.combustibleKg}
-                        onChange={(e) => setInsumos((prev) => ({ ...prev, combustibleKg: Number(e.target.value) }))}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
-                      />
-                      <span className="text-[10px] text-slate-600 font-bold">kg</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Aserrín / Bagazo</label>
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="number"
-                        step="5"
-                        min="0"
-                        tabIndex={9 + brickTypes.length}
-                        value={insumos.aserrinKg}
-                        onChange={(e) => setInsumos((prev) => ({ ...prev, aserrinKg: Number(e.target.value) }))}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
-                      />
-                      <span className="text-[10px] text-slate-600 font-bold">kg</span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Aditivos / Otros</label>
-                    <div className="flex items-center space-x-1">
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        tabIndex={10 + brickTypes.length}
-                        value={insumos.aditivosKg}
-                        onChange={(e) => setInsumos((prev) => ({ ...prev, aditivosKg: Number(e.target.value) }))}
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs font-mono font-bold bg-white text-right"
-                      />
-                      <span className="text-[10px] text-slate-600 font-bold">kg</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Observaciones & Novedades Adicionales</label>
+              {/* 5. Observaciones */}
+              <div className="border border-slate-300 rounded-xl p-3.5 bg-white shadow-xs">
+                <label className="block font-bold text-slate-800 uppercase text-xs mb-1.5 flex items-center">
+                  <span className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center text-[10px] mr-2">5</span>
+                  <span>5. Observaciones:</span>
+                </label>
                 <textarea
                   {...registerBatch("notes")}
-                  tabIndex={11 + brickTypes.length}
+                  tabIndex={12 + brickTypes.length}
                   rows={2}
-                  placeholder="Detalles sobre clima, patio asignado o novedades del turno..."
+                  placeholder="Detalles sobre clima, patio asignado, fallas mecánicas o novedades técnicas del turno..."
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                 />
+              </div>
+
+              {/* 6. Si no hubo producción, ¿qué fue lo que se hizo? Detallar */}
+              <div className="border border-amber-300 rounded-xl p-3.5 bg-amber-50/40 shadow-xs">
+                <label className="block font-bold text-slate-800 uppercase text-xs mb-1.5 flex items-center">
+                  <span className="w-5 h-5 rounded-full bg-amber-600 text-white flex items-center justify-center text-[10px] mr-2">6</span>
+                  <span>6. Si no hubo producción, ¿qué fue lo que se hizo? Detallar:</span>
+                </label>
+                <textarea
+                  value={noProductionReason}
+                  onChange={(e) => setNoProductionReason(e.target.value)}
+                  tabIndex={13 + brickTypes.length}
+                  rows={2}
+                  placeholder="Si la cantidad producida es 0, especifica aquí la causa o tarea realizada (mantenimiento de hornos, preparación de canchas, acopio de leña, lluvia, etc.)..."
+                  className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                />
+                <p className="text-[10px] text-amber-800 mt-1">
+                  ℹ️ Si no hubo producción de ladrillos durante el día, completa este campo para justificar la jornada laboral en la planilla.
+                </p>
+              </div>
+
+              {/* Firmas de Control */}
+              <div className="border border-slate-300 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                <div className="flex items-center space-x-2 pb-2 border-b border-slate-200">
+                  <CheckCircle className="w-4 h-4 text-slate-700" />
+                  <span className="font-bold text-slate-800 text-xs uppercase tracking-wide">Firmas de Control & Responsables</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  {/* Maestro Responsable */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <span className="block font-bold text-slate-800 uppercase text-[10px] mb-1">Firma Maestro Responsable</span>
+                    <span className="text-[10px] text-slate-500 block mb-2">Operario de Vaciado</span>
+                    <div className="px-2.5 py-1.5 bg-slate-100 rounded border border-slate-200 font-semibold text-slate-700 truncate">
+                      {selectedOperatorName}
+                    </div>
+                  </div>
+
+                  {/* Supervisor Planta */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <span className="block font-bold text-slate-800 uppercase text-[10px] mb-1">Firma Supervisor Planta</span>
+                    <span className="text-[10px] text-slate-500 block mb-2">Control de Calidad</span>
+                    <input
+                      type="text"
+                      tabIndex={14 + brickTypes.length}
+                      value={supervisorName}
+                      onChange={(e) => setSupervisorName(e.target.value)}
+                      placeholder="Nombre del Supervisor..."
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs font-medium focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+
+                  {/* Digitador Oficina */}
+                  <div className="bg-white p-3 rounded-lg border border-slate-200">
+                    <span className="block font-bold text-slate-800 uppercase text-[10px] mb-1">Firma Digitador Oficina</span>
+                    <span className="text-[10px] text-slate-500 block mb-2">Ingreso a Sistema ERP</span>
+                    <input
+                      type="text"
+                      tabIndex={15 + brickTypes.length}
+                      value={digitadorName}
+                      onChange={(e) => setDigitadorName(e.target.value)}
+                      placeholder="Nombre del Digitador..."
+                      className="w-full px-2.5 py-1.5 border border-slate-300 rounded text-xs font-medium focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-200 flex justify-end space-x-3 shrink-0">
                 <button
                   type="button"
-                  tabIndex={13 + brickTypes.length}
+                  tabIndex={17 + brickTypes.length}
                   onClick={() => setIsBatchModalOpen(false)}
                   className="px-4 py-2 text-slate-600 hover:text-slate-800 font-medium cursor-pointer"
                 >
@@ -944,7 +1077,7 @@ export default function ProduccionPage() {
                 </button>
                 <button
                   type="submit"
-                  tabIndex={12 + brickTypes.length}
+                  tabIndex={16 + brickTypes.length}
                   className="px-6 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg shadow-md cursor-pointer text-xs"
                 >
                   Guardar Producción & Insumos del Día
@@ -1045,13 +1178,7 @@ export default function ProduccionPage() {
                   </div>
                 </div>
 
-                {/* Observaciones */}
-                <div className="print:break-inside-avoid mt-4">
-                  <label className="block font-bold text-slate-800 uppercase text-[11px] mb-1">4. Observaciones & Novedades:</label>
-                  <div className="border border-slate-400 h-12 rounded px-3 flex items-start pt-1 text-slate-400">
-                    ____________________________________________________________________________________________________
-                  </div>
-                </div>
+
 
                 {/* Tabla de vaciado por tipo de ladrillo */}
                 <div className="mt-4">
@@ -1076,9 +1203,18 @@ export default function ProduccionPage() {
                   </table>
                 </div>
 
-                <div className="print:break-inside-avoid">
+                <div className="print:break-inside-avoid mt-3">
                   <label className="block font-bold text-slate-800 uppercase text-[11px] mb-1">5. Observaciones:</label>
-                  <div className="border border-slate-400 h-16 rounded p-2 text-slate-400">
+                  <div className="border border-slate-400 h-14 rounded p-2 text-slate-400">
+                    ____________________________________________________________________________________________________
+                  </div>
+                </div>
+
+                <div className="print:break-inside-avoid mt-3">
+                  <label className="block font-bold text-slate-800 uppercase text-[11px] mb-1">
+                    6. Si no hubo producción, ¿qué fue lo que se hizo? Detallar:
+                  </label>
+                  <div className="border border-slate-400 h-14 rounded p-2 text-slate-400">
                     ____________________________________________________________________________________________________
                   </div>
                 </div>

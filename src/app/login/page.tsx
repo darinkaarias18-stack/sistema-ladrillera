@@ -22,15 +22,18 @@ export default function LoginPage() {
   const [resetSuccess, setResetSuccess] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleLogin = async (e?: React.FormEvent, customEmail?: string, customPass?: string) => {
+    if (e) e.preventDefault()
     setLoading(true)
     setError(null)
 
+    const targetEmail = customEmail ?? email
+    const targetPassword = customPass ?? password
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: targetEmail,
+        password: targetPassword,
       })
 
       if (error) {
@@ -175,6 +178,58 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
+
+          {/* Acceso Rápido Local */}
+          <div className="mt-8 pt-6 border-t border-zinc-800/80">
+            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3 text-center">
+              Acceso Rápido Local (1 Clic)
+            </p>
+            <div className="grid grid-cols-1 gap-2.5">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  setEmail("darinka.arias18@gmail.com")
+                  setPassword("superadmin1234*")
+                  handleLogin(undefined, "darinka.arias18@gmail.com", "superadmin1234*")
+                }}
+                className="flex items-center justify-between p-3 rounded-xl bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-700/50 hover:border-orange-500/50 transition-all text-left text-xs group cursor-pointer"
+              >
+                <div>
+                  <div className="font-semibold text-white flex items-center gap-1.5">
+                    <span>👑 Superadmin: Darinka Arias</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange-500/20 text-orange-400 font-semibold border border-orange-500/30">
+                      Acceso Total
+                    </span>
+                  </div>
+                  <div className="text-zinc-400 mt-0.5 font-mono">darinka.arias18@gmail.com</div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-orange-400 group-hover:translate-x-0.5 transition-all" />
+              </button>
+
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  setEmail("darinkaarias@gmail.com")
+                  setPassword("TemporalPassword2026!")
+                  handleLogin(undefined, "darinkaarias@gmail.com", "TemporalPassword2026!")
+                }}
+                className="flex items-center justify-between p-3 rounded-xl bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-700/50 hover:border-purple-500/50 transition-all text-left text-xs group cursor-pointer"
+              >
+                <div>
+                  <div className="font-semibold text-white flex items-center gap-1.5">
+                    <span>👔 Administrador: Fernando Espinoza</span>
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-400 font-semibold border border-purple-500/30">
+                      Gerencia
+                    </span>
+                  </div>
+                  <div className="text-zinc-400 mt-0.5 font-mono">darinkaarias@gmail.com</div>
+                </div>
+                <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-purple-400 group-hover:translate-x-0.5 transition-all" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

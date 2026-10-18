@@ -130,79 +130,193 @@ export const INITIAL_INVENTORY_STOCK: InventoryStock[] = [
 
 export const INITIAL_PRODUCTION_BATCHES: ProductionBatch[] = [
   {
-    id: "batch-1",
-    production_date: "2026-08-25",
+    id: "batch-14",
+    production_date: "2026-10-17",
     brick_type_id: "brick-1",
     operator_id: "emp-1", // Angel
     shift: "mañana",
-    quantity_produced: 2500,
-    status: "secando",
-    folio_number: "FOL-00101",
+    quantity_produced: 3500,
+    status: "verde",
+    folio_number: "FOL-00134",
     horno: "Horno 1",
-    notes: "Vaciado continuo en patio 1",
+    notes: "Moldeo en patio nuevo, excelente plasticidad de arcilla"
   },
   {
-    id: "batch-2",
-    production_date: "2026-08-25",
-    brick_type_id: "brick-3",
-    operator_id: "emp-2", // Moises
+    id: "batch-13",
+    production_date: "2026-10-17",
+    brick_type_id: "brick-9",
+    operator_id: "emp-2", // Moisés
     shift: "mañana",
-    quantity_produced: 2800,
-    status: "secando",
-    folio_number: "FOL-00102",
+    quantity_produced: 2600,
+    status: "verde",
+    folio_number: "FOL-00133",
     horno: "Horno 2",
-    notes: "Turno mañana completo",
+    notes: "Ladrillo 2H de 1ra, lote fresco en tendales"
   },
   {
-    id: "batch-3",
-    production_date: "2026-08-26",
-    brick_type_id: "brick-5",
+    id: "batch-12",
+    production_date: "2026-10-16",
+    brick_type_id: "brick-1",
     operator_id: "emp-1",
     shift: "mañana",
-    quantity_produced: 3000,
-    status: "horno",
-    folio_number: "FOL-00103",
+    quantity_produced: 3800,
+    status: "secando",
+    folio_number: "FOL-00132",
     horno: "Horno 1",
-    notes: "Ingresado a quema en horno",
+    notes: "En patio secando bajo sombra con lona protectora"
   },
   {
-    id: "batch-4",
-    production_date: "2026-08-27",
-    brick_type_id: "brick-1",
+    id: "batch-11",
+    production_date: "2026-10-15",
+    brick_type_id: "brick-3",
     operator_id: "emp-2",
     shift: "tarde",
-    quantity_produced: 2200,
-    status: "terminado",
-    folio_number: "FOL-00104",
+    quantity_produced: 3100,
+    status: "secando",
+    folio_number: "FOL-00131",
+    horno: "Horno 2",
+    notes: "Deshidratación óptima, listo para apilado de horno"
+  },
+  {
+    id: "batch-10",
+    production_date: "2026-10-14",
+    brick_type_id: "brick-1",
+    operator_id: "emp-1",
+    shift: "mañana",
+    quantity_produced: 4200,
+    status: "horno",
+    folio_number: "FOL-00130",
+    horno: "Horno 1",
+    notes: "En quema continua, temperatura a 980°C con leña tajibo"
+  },
+  {
+    id: "batch-9",
+    production_date: "2026-10-13",
+    brick_type_id: "brick-5",
+    operator_id: "emp-2",
+    shift: "mañana",
+    quantity_produced: 3300,
+    status: "horno",
+    folio_number: "FOL-00129",
     horno: "Horno 3",
-    notes: "Calidad excelente, llevado a bodega",
+    notes: "Cocción de ladrillo 6H cuadrado en cámara 2"
+  },
+  {
+    id: "batch-8",
+    production_date: "2026-10-12",
+    brick_type_id: "brick-17",
+    operator_id: "emp-1",
+    shift: "tarde",
+    quantity_produced: 2900,
+    status: "horno",
+    folio_number: "FOL-00128",
+    horno: "Horno 2",
+    notes: "Tejas coloniales en cocción final"
+  },
+  {
+    id: "batch-7",
+    production_date: "2026-10-10",
+    brick_type_id: "brick-1",
+    operator_id: "emp-1",
+    shift: "mañana",
+    quantity_produced: 4500,
+    status: "terminado",
+    folio_number: "FOL-00127",
+    horno: "Horno 1",
+    notes: "Récord de vaciado turno mañana, llevado a bodega de terminado"
+  },
+  {
+    id: "batch-6",
+    production_date: "2026-10-09",
+    brick_type_id: "brick-3",
+    operator_id: "emp-2",
+    shift: "mañana",
+    quantity_produced: 3600,
+    status: "terminado",
+    folio_number: "FOL-00126",
+    horno: "Horno 2",
+    notes: "Enfriamiento completado, calidad 1ra selección impecable"
   },
   {
     id: "batch-5",
-    production_date: "2026-08-28",
+    production_date: "2026-10-07",
+    brick_type_id: "brick-5",
+    operator_id: "emp-1",
+    shift: "mañana",
+    quantity_produced: 3200,
+    status: "terminado",
+    folio_number: "FOL-00125",
+    horno: "Horno 1",
+    notes: "Apilado en bodega listo para despacho de Constructora"
+  },
+  {
+    id: "batch-4",
+    production_date: "2026-10-05",
+    brick_type_id: "brick-1",
+    operator_id: "emp-2",
+    shift: "tarde",
+    quantity_produced: 3400,
+    status: "terminado",
+    folio_number: "FOL-00124",
+    horno: "Horno 3",
+    notes: "Ladrillo 6H normal llevado a bodega principal"
+  },
+  {
+    id: "batch-3",
+    production_date: "2026-10-03",
+    brick_type_id: "brick-13",
+    operator_id: "emp-1",
+    shift: "mañana",
+    quantity_produced: 2800,
+    status: "terminado",
+    folio_number: "FOL-00123",
+    horno: "Horno 1",
+    notes: "Piso o Tojo rústico horneado y seleccionado"
+  },
+  {
+    id: "batch-2",
+    production_date: "2026-10-02",
+    brick_type_id: "brick-1",
+    operator_id: "emp-2",
+    shift: "mañana",
+    quantity_produced: 3900,
+    status: "terminado",
+    folio_number: "FOL-00122",
+    horno: "Horno 2",
+    notes: "Lote completo de primera para constructora"
+  },
+  {
+    id: "batch-1",
+    production_date: "2026-10-01",
     brick_type_id: "brick-3",
     operator_id: "emp-1",
     shift: "mañana",
-    quantity_produced: 1500,
-    status: "verde",
-    notes: "Recién moldeado",
+    quantity_produced: 3300,
+    status: "terminado",
+    folio_number: "FOL-00121",
+    horno: "Horno 1",
+    notes: "Apertura de producción mes de octubre"
   }
 ];
 
 export const INITIAL_CUSTOMERS: Customer[] = [
   { id: "cust-1", name: "Constructora Norte S.A.", phone: "712-34567", address: "Av. Las Américas #450" },
   { id: "cust-2", name: "Feria de Materiales San José", phone: "689-11223", address: "Calle Industrial #12" },
-  { id: "cust-3", name: "Ing. Juan Pablo Morales", phone: "700-98765", address: "Urb. Los Pinos Mz B" }
+  { id: "cust-3", name: "Ing. Juan Pablo Morales", phone: "700-98765", address: "Urb. Los Pinos Mz B" },
+  { id: "cust-4", name: "Consorcio Constructor del Oriente", phone: "755-43210", address: "Av. Banzer 4to Anillo" },
+  { id: "cust-5", name: "Constructora Los Tajibos", phone: "780-99881", address: "Km 9 Carretera al Norte" },
+  { id: "cust-6", name: "Distribuidora Warnes Materiales", phone: "763-12456", address: "Av. Principal Warnes #88" },
+  { id: "cust-7", name: "Urbanización Las Palmas S.R.L.", phone: "721-66778", address: "Radial 19 Doble Vía" }
 ];
 
 export const INITIAL_SALES: Sale[] = [
   {
     id: "sale-1",
     customer_id: "cust-1",
-    total_amount: 9000, // 5000 King Kong x 1.80
+    total_amount: 9000,
     payment_method: "transferencia",
     sold_by: "prof-4",
-    created_at: "2026-08-27T10:30:00Z",
+    created_at: "2026-09-25T10:30:00Z",
     items: [
       { id: "sitem-1", sale_id: "sale-1", brick_type_id: "brick-1", quantity: 5000, unit_price: 1.80 }
     ]
@@ -210,12 +324,91 @@ export const INITIAL_SALES: Sale[] = [
   {
     id: "sale-2",
     customer_id: "cust-2",
-    total_amount: 4200, // 3000 Pandereta x 1.40
+    total_amount: 4200,
     payment_method: "efectivo",
     sold_by: "prof-4",
-    created_at: "2026-08-28T14:15:00Z",
+    created_at: "2026-09-28T14:15:00Z",
     items: [
       { id: "sitem-2", sale_id: "sale-2", brick_type_id: "brick-2", quantity: 3000, unit_price: 1.40 }
+    ]
+  },
+  {
+    id: "sale-3",
+    customer_id: "cust-5",
+    total_amount: 12600,
+    payment_method: "transferencia",
+    sold_by: "prof-4",
+    created_at: "2026-10-02T11:00:00Z",
+    items: [
+      { id: "sitem-3", sale_id: "sale-3", brick_type_id: "brick-1", quantity: 7000, unit_price: 1.80 }
+    ]
+  },
+  {
+    id: "sale-4",
+    customer_id: "cust-6",
+    total_amount: 15200,
+    payment_method: "transferencia",
+    sold_by: "prof-4",
+    created_at: "2026-10-05T16:20:00Z",
+    items: [
+      { id: "sitem-4", sale_id: "sale-4", brick_type_id: "brick-3", quantity: 8000, unit_price: 1.90 }
+    ]
+  },
+  {
+    id: "sale-5",
+    customer_id: "cust-3",
+    total_amount: 9450,
+    payment_method: "efectivo",
+    sold_by: "prof-4",
+    created_at: "2026-10-08T09:45:00Z",
+    items: [
+      { id: "sitem-5", sale_id: "sale-5", brick_type_id: "brick-5", quantity: 4500, unit_price: 2.10 }
+    ]
+  },
+  {
+    id: "sale-6",
+    customer_id: "cust-4",
+    total_amount: 27600,
+    payment_method: "transferencia",
+    sold_by: "prof-4",
+    created_at: "2026-10-10T15:30:00Z",
+    items: [
+      { id: "sitem-6a", sale_id: "sale-6", brick_type_id: "brick-1", quantity: 12000, unit_price: 1.80 },
+      { id: "sitem-6b", sale_id: "sale-6", brick_type_id: "brick-5", quantity: 2857, unit_price: 2.10 }
+    ]
+  },
+  {
+    id: "sale-7",
+    customer_id: "cust-7",
+    total_amount: 18500,
+    payment_method: "transferencia",
+    sold_by: "prof-4",
+    created_at: "2026-10-13T12:15:00Z",
+    items: [
+      { id: "sitem-7a", sale_id: "sale-7", brick_type_id: "brick-17", quantity: 5000, unit_price: 2.50 },
+      { id: "sitem-7b", sale_id: "sale-7", brick_type_id: "brick-13", quantity: 2727, unit_price: 2.20 }
+    ]
+  },
+  {
+    id: "sale-8",
+    customer_id: "cust-1",
+    total_amount: 14400,
+    payment_method: "credito",
+    sold_by: "prof-4",
+    created_at: "2026-10-15T10:00:00Z",
+    items: [
+      { id: "sitem-8", sale_id: "sale-8", brick_type_id: "brick-1", quantity: 8000, unit_price: 1.80 }
+    ]
+  },
+  {
+    id: "sale-9",
+    customer_id: "cust-2",
+    total_amount: 11200,
+    payment_method: "efectivo",
+    sold_by: "prof-4",
+    created_at: "2026-10-17T14:40:00Z",
+    items: [
+      { id: "sitem-9", sale_id: "sale-9", brick_type_id: "brick-9", quantity: 8000, unit_price: 1.40 }
     ]
   }
 ];
@@ -241,7 +434,7 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
   {
     id: "pay-1",
     period_id: "period-1",
-    employee_id: "emp-1", // Angel (destajo: 7,000 unidades producidas x $150 / 1000 = $1,050)
+    employee_id: "emp-1",
     base_amount: 0,
     antiquity_bonus: 0,
     frontier_bonus: 0,
@@ -249,7 +442,7 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
     total_earned: 1050,
     deductions: 0,
     mid_period_advance: 0,
-    personal_advances: 150, // Anticipo de $150
+    personal_advances: 150,
     net_pay: 900,
     paid: false,
     signed: false
@@ -257,7 +450,7 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
   {
     id: "pay-2",
     period_id: "period-1",
-    employee_id: "emp-2", // Moises (destajo: 5,000 unidades x $160 / 1000 = $800)
+    employee_id: "emp-2",
     base_amount: 0,
     antiquity_bonus: 0,
     frontier_bonus: 0,
@@ -273,14 +466,14 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
   {
     id: "pay-3",
     period_id: "period-2",
-    employee_id: "emp-3", // Victor Rodolfo (mensual fijo $3800 + $190 bono + $200 frontera)
+    employee_id: "emp-3",
     base_amount: 3800,
     antiquity_bonus: 190,
     frontier_bonus: 200,
     production_bonus: 0,
     total_earned: 4190,
     deductions: 0,
-    mid_period_advance: 1900, // 50% quincena
+    mid_period_advance: 1900,
     personal_advances: 200,
     net_pay: 2090,
     paid: true,
@@ -289,9 +482,10 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
 ];
 
 export const INITIAL_CASH_LEDGER: CashLedgerEntry[] = [
+  // VENTAS (INGRESOS)
   {
     id: "cash-1",
-    movement_date: "2026-08-25",
+    movement_date: "2026-09-25",
     description: "Venta directa de ladrillo King Kong (Contado)",
     amount: 9000,
     category: "venta",
@@ -299,23 +493,8 @@ export const INITIAL_CASH_LEDGER: CashLedgerEntry[] = [
     reference_id: "sale-1"
   },
   {
-    id: "cash-2",
-    movement_date: "2026-08-26",
-    description: "Anticipo de quincena operario Angel",
-    amount: -150,
-    category: "anticipo",
-    reference_type: "employee_advances"
-  },
-  {
-    id: "cash-3",
-    movement_date: "2026-08-27",
-    description: "Pago de combustible camión de reparto (Alex Pandique)",
-    amount: -450,
-    category: "combustible"
-  },
-  {
     id: "cash-4",
-    movement_date: "2026-08-28",
+    movement_date: "2026-09-28",
     description: "Cobro venta ladrillo Pandereta - Constructora Norte",
     amount: 4200,
     category: "venta",
@@ -323,13 +502,255 @@ export const INITIAL_CASH_LEDGER: CashLedgerEntry[] = [
     reference_id: "sale-2"
   },
   {
+    id: "cash-v3",
+    movement_date: "2026-10-02",
+    description: "Cobro Venta Ladrillo 6H 1ra - Constructora Los Tajibos",
+    amount: 12600,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-3"
+  },
+  {
+    id: "cash-v4",
+    movement_date: "2026-10-05",
+    description: "Cobro Venta Ladrillo 25CM - Distribuidora Warnes",
+    amount: 15200,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-4"
+  },
+  {
+    id: "cash-v5",
+    movement_date: "2026-10-08",
+    description: "Cobro Venta Ladrillo Cuadrado - Ing. Juan Pablo Morales",
+    amount: 9450,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-5"
+  },
+  {
+    id: "cash-v6",
+    movement_date: "2026-10-10",
+    description: "Venta Mayorista Gran Escala - Consorcio del Oriente (Récord)",
+    amount: 27600,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-6"
+  },
+  {
+    id: "cash-v7",
+    movement_date: "2026-10-13",
+    description: "Cobro Venta Tejas y Pisos - Urbanización Las Palmas",
+    amount: 18500,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-7"
+  },
+  {
+    id: "cash-v8",
+    movement_date: "2026-10-15",
+    description: "Venta Ladrillo 6H 1ra - Constructora Norte S.A.",
+    amount: 14400,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-8"
+  },
+  {
+    id: "cash-v9",
+    movement_date: "2026-10-17",
+    description: "Cobro Venta Ladrillo 2H - Feria de Materiales San José",
+    amount: 11200,
+    category: "venta",
+    reference_type: "sale",
+    reference_id: "sale-9"
+  },
+
+  // COMPRAS DE INSUMOS (LO QUE MÁS SE COMPRA)
+  {
+    id: "cash-ci1",
+    movement_date: "2026-09-26",
+    description: "Compra de Leña dura tajibo para quema de hornos (Lote 1)",
+    amount: -5200,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci2",
+    movement_date: "2026-09-29",
+    description: "Compra de Arcilla greda seleccionada (4 volquetas de 12m3)",
+    amount: -3800,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci3",
+    movement_date: "2026-10-03",
+    description: "Compra de Leña seca de curupaú para Horno 2 (Lote 2)",
+    amount: -4600,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci4",
+    movement_date: "2026-10-06",
+    description: "Compra de Tierra arenosa para mezcla de moldeado (3 viajes)",
+    amount: -2100,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci5",
+    movement_date: "2026-10-09",
+    description: "Compra de Leña trozada para encendido rápido de hornos",
+    amount: -3400,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci6",
+    movement_date: "2026-10-11",
+    description: "Compra de Arcilla roja fina para acabado de tejas (3 volquetas)",
+    amount: -3100,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci7",
+    movement_date: "2026-10-14",
+    description: "Compra de Leña dura de cencerro para cámara principal",
+    amount: -4100,
+    category: "compra_insumo"
+  },
+  {
+    id: "cash-ci8",
+    movement_date: "2026-10-16",
+    description: "Compra de Aditivo ligante y desmoldante para extrusora",
+    amount: -1150,
+    category: "compra_insumo"
+  },
+
+  // GASTOS DE COMBUSTIBLE
+  {
+    id: "cash-3",
+    movement_date: "2026-09-27",
+    description: "Pago de combustible camión de reparto (Alex Pandique)",
+    amount: -450,
+    category: "combustible"
+  },
+  {
+    id: "cash-cb2",
+    movement_date: "2026-10-04",
+    description: "Diesel para pala cargadora y tractor de patio",
+    amount: -1200,
+    category: "combustible"
+  },
+  {
+    id: "cash-cb3",
+    movement_date: "2026-10-08",
+    description: "Diesel para camión de despacho Lote 2",
+    amount: -680,
+    category: "combustible"
+  },
+  {
+    id: "cash-cb4",
+    movement_date: "2026-10-12",
+    description: "Diesel para generador de emergencia y motobomba",
+    amount: -850,
+    category: "combustible"
+  },
+  {
+    id: "cash-cb5",
+    movement_date: "2026-10-16",
+    description: "Diesel para camión de reparto Alex Pandique",
+    amount: -520,
+    category: "combustible"
+  },
+
+  // GASTOS DE MANTENIMIENTO
+  {
+    id: "cash-m1",
+    movement_date: "2026-10-04",
+    description: "Mantenimiento rodamiento y correas de extrusora",
+    amount: -1850,
+    category: "mantenimiento"
+  },
+  {
+    id: "cash-m2",
+    movement_date: "2026-10-07",
+    description: "Reparación y soldadura de tolva de alimentación de barro",
+    amount: -980,
+    category: "mantenimiento"
+  },
+  {
+    id: "cash-m3",
+    movement_date: "2026-10-11",
+    description: "Repuestos cuchillas de corte para ladrillo 6H",
+    amount: -1450,
+    category: "mantenimiento"
+  },
+  {
+    id: "cash-m4",
+    movement_date: "2026-10-15",
+    description: "Mantenimiento preventivo eléctrico panel hornos",
+    amount: -780,
+    category: "mantenimiento"
+  },
+
+  // GASTOS DE PLANILLA Y ANTICIPOS
+  {
+    id: "cash-2",
+    movement_date: "2026-09-26",
+    description: "Anticipo de quincena operario Angel",
+    amount: -150,
+    category: "anticipo",
+    reference_type: "employee_advances"
+  },
+  {
     id: "cash-5",
-    movement_date: "2026-08-29",
+    movement_date: "2026-09-29",
     description: "Pago de planilla mensual Victor Rodolfo",
     amount: -2090,
     category: "planilla",
     reference_type: "payroll_details",
     reference_id: "pay-3"
+  },
+  {
+    id: "cash-p2",
+    movement_date: "2026-10-06",
+    description: "Anticipo de quincena moldeador Moisés",
+    amount: -200,
+    category: "anticipo"
+  },
+  {
+    id: "cash-p3",
+    movement_date: "2026-10-12",
+    description: "Anticipo quincenal operario Angel",
+    amount: -250,
+    category: "anticipo"
+  },
+  {
+    id: "cash-p4",
+    movement_date: "2026-10-15",
+    description: "Pago de quincena personal operativo fijo",
+    amount: -3400,
+    category: "planilla"
+  },
+
+  // OTROS GASTOS OPERATIVOS
+  {
+    id: "cash-o1",
+    movement_date: "2026-10-05",
+    description: "Servicio de energía eléctrica trifásica planta (CRE)",
+    amount: -3100,
+    category: "otro"
+  },
+  {
+    id: "cash-o2",
+    movement_date: "2026-10-10",
+    description: "Suministro de agua industrial para preparación de lodo",
+    amount: -650,
+    category: "otro"
+  },
+  {
+    id: "cash-o3",
+    movement_date: "2026-10-14",
+    description: "Flete de transporte pesado de carga externa",
+    amount: -1200,
+    category: "otro"
   }
 ];
 
