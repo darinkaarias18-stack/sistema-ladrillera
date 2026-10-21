@@ -5,6 +5,8 @@ import { UsersClient } from "./UsersClient"
 
 import { Header } from "@/components/layout/header"
 
+import { store } from "@/lib/store"
+
 export default async function UsuariosPage() {
   const supabase = await createServerClient()
   
@@ -33,15 +35,36 @@ export default async function UsuariosPage() {
     redirect("/")
   }
 
-  // 2. Fetch profiles using admin client to bypass RLS restrictions on reading all profiles
-  const { data: profiles, error } = await adminClient
-    .from("profiles")
-    .select("id, full_name, position, role, email, created_at")
-    .order("created_at", { ascending: false })
+  // 2. Fetch profiles and auth users using admin client to retrieve custom roles from user_metadata
+  const [{ data: profiles, error }, { data: authUsers }] = await Promise.all([
+    adminClient
+      .from("profiles")
+      .select("id, full_name, position, role, email, created_at")
+      .order("created_at", { ascending: false }),
+    adminClient.auth.admin.listUsers()
+  ]);
 
   if (error) {
     console.error("Error fetching profiles:", error)
   }
+
+  const authUserMap = new Map((authUsers?.users || []).map(u => [u.id, u]));
+
+  const mergedProfiles = (profiles || []).map(p => {
+    const authUser = authUserMap.get(p.id);
+    const metaRole = authUser?.user_metadata?.role;
+    const metaAllowedModules = authUser?.user_metadata?.allowed_modules;
+    return {
+      ...p,
+      role: (metaRole || p.role) as any,
+      full_name: authUser?.user_metadata?.full_name || p.full_name,
+      position: authUser?.user_metadata?.position || p.position,
+      email: authUser?.email || p.email,
+      allowed_modules: metaAllowedModules || [],
+    };
+  });
+
+  const employees = store.getEmployees().filter(e => e.active);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-slate-50">
@@ -55,7 +78,7 @@ export default async function UsuariosPage() {
         </div>
       </div>
       
-      <UsersClient initialProfiles={profiles || []} currentUserRole={normalizedRole || ""} />
+      <UsersClient initialProfiles={mergedProfiles || []} currentUserRole={normalizedRole || ""} employees={employees} />
         </div>
       </div>
     </div>

@@ -6,7 +6,7 @@ import { DataTablePagination } from "@/components/data-table/data-table-paginati
 import { store } from "@/lib/store";
 import { Order, Customer, BrickType, InventoryStock, Employee, DeliveryType } from "@/types/database.types";
 import { useEffect, useState, useMemo } from "react";
-import { Plus, X, PackageOpen, Calendar, MapPin, AlertCircle, Printer, Trash2, Phone } from "lucide-react";
+import { Plus, X, PackageOpen, Calendar, MapPin, AlertCircle, Printer, Trash2, Phone, Percent } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 
 interface OrderInput {
@@ -70,6 +70,27 @@ export default function PedidosPage() {
   const currentUnitPrice = useWatch({ control, name: "unitPrice" });
   const selectedDeliveryType = useWatch({ control, name: "deliveryType" });
 
+  const selectedCustomer = useMemo(() => {
+    return customers.find(c => c.id === selectedCustomerId);
+  }, [selectedCustomerId, customers]);
+
+  const currentDiscountPct = useMemo(() => {
+    if (!selectedCustomer?.city) return 0;
+    return store.getDiscountForCity(selectedCustomer.city);
+  }, [selectedCustomer]);
+
+  const cartSubtotal = useMemo(() => {
+    return cartItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+  }, [cartItems]);
+
+  const cartDiscountAmount = useMemo(() => {
+    return Number(((cartSubtotal * currentDiscountPct) / 100).toFixed(2));
+  }, [cartSubtotal, currentDiscountPct]);
+
+  const cartTotal = useMemo(() => {
+    return Math.max(0, cartSubtotal - cartDiscountAmount);
+  }, [cartSubtotal, cartDiscountAmount]);
+
   const loadData = () => {
     let list = store.getOrders();
     if (search) {
@@ -121,8 +142,20 @@ export default function PedidosPage() {
       return;
     }
     
+    const customer = customers.find(c => c.id === data.customerId);
+    const customerCity = customer?.city || "Santa Cruz";
+    const discountPct = store.getDiscountForCity(customerCity);
+    const subtotal = cartItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
+    const discountAmount = Number(((subtotal * discountPct) / 100).toFixed(2));
+    const totalAmount = Math.max(0, subtotal - discountAmount);
+
     const newOrder = store.createOrder({
       customer_id: data.customerId,
+      city: customerCity,
+      city_discount_pct: discountPct,
+      city_discount_amount: discountAmount,
+      subtotal: subtotal,
+      total_amount: totalAmount,
       status: "pendiente",
       delivery_date: data.deliveryDate,
       delivery_type: data.deliveryType,
@@ -140,11 +173,12 @@ export default function PedidosPage() {
     });
     
     // Generar mensaje de WhatsApp
-    const customer = customers.find(c => c.id === data.customerId);
     if (customer) {
-      const totalOrderAmount = cartItems.reduce((acc, item) => acc + (item.quantity * item.unitPrice), 0);
       let msg = `*NUEVO PEDIDO REGISTRADO*\n\n`;
       msg += `*Cliente:* ${customer.name}\n`;
+      if (customerCity) {
+        msg += `*Ciudad:* ${customerCity}\n`;
+      }
       if (data.contactPhone) {
         msg += `*Teléfono:* ${data.contactPhone}\n`;
       }
@@ -152,7 +186,13 @@ export default function PedidosPage() {
       cartItems.forEach(item => {
         msg += `- ${item.quantity} un. ${item.name} (Bs. ${item.unitPrice})\n`;
       });
-      msg += `\n*Total:* Bs. ${totalOrderAmount.toFixed(2)}\n`;
+      if (discountPct > 0) {
+        msg += `\n*Subtotal:* Bs. ${subtotal.toFixed(2)}\n`;
+        msg += `*Descuento Ciudad (${customerCity} - ${discountPct}%):* -Bs. ${discountAmount.toFixed(2)}\n`;
+        msg += `*Total Final:* Bs. ${totalAmount.toFixed(2)}\n`;
+      } else {
+        msg += `\n*Total:* Bs. ${totalAmount.toFixed(2)}\n`;
+      }
       msg += `*Fecha estimada:* ${new Date(data.deliveryDate).toLocaleDateString("es-BO")}\n`;
       let delivTypeStr = "Puesto en Fábrica";
       if (data.deliveryType === 'obra' || data.deliveryType === 'envio') delivTypeStr = "Puesto en Obra";
@@ -273,7 +313,12 @@ export default function PedidosPage() {
                   </tr>
                 ) : (
                   paginated.map((order) => {
-                    const totalOrderAmount = (order.items || []).reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
+                    const subtotalAmount = order.subtotal !== undefined
+                      ? order.subtotal
+                      : (order.items || []).reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
+                    const discountPct = order.city_discount_pct ?? 0;
+                    const discountAmount = order.city_discount_amount ?? 0;
+                    const finalAmount = order.total_amount !== undefined ? order.total_amount : Math.max(0, subtotalAmount - discountAmount);
                     
                     return (
                       <tr
@@ -343,8 +388,27 @@ export default function PedidosPage() {
                             ? (order.driver?.full_name || 'No asignado')
                             : '-'}
                         </td>
-                        <td className="p-3.5 font-bold text-slate-900">
-                          Bs. {totalOrderAmount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900">
+                            Bs. {finalAmount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                          </div>
+                          {discountPct > 0 ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <span className="text-[10px] text-slate-400 line-through">
+                                Bs. {subtotalAmount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                              </span>
+                              <span
+                                className="inline-flex items-center text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-300"
+                                title={`Descuento aplicado por ciudad (${order.city || "Ciudad"}): ${discountPct}%`}
+                              >
+                                -{discountPct}% {order.city}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-[10px] text-slate-400">
+                              {order.city ? order.city : "Tarifa base"}
+                            </div>
+                          )}
                         </td>
                         <td className="p-3.5 text-center">
                           <select
@@ -442,11 +506,36 @@ export default function PedidosPage() {
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 bg-white"
                     >
                       <option value="">Seleccionar Cliente...</option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
+                      {customers.map((c) => {
+                        const disc = store.getDiscountForCity(c.city);
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.city ? `(${c.city}${disc > 0 ? ` • -${disc}% desc.` : ""})` : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                     {errors.customerId && <p className="text-red-500 text-xs mt-1">{errors.customerId.message}</p>}
+
+                    {/* Banner Informativo de Ciudad y Descuento */}
+                    {selectedCustomer && (
+                      <div className="mt-2 p-2.5 rounded-lg bg-orange-50/70 border border-orange-200/80 flex items-center justify-between text-xs animate-in fade-in duration-150">
+                        <div className="flex items-center gap-1.5 text-slate-700">
+                          <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                          <span>Ciudad: <strong className="text-slate-900">{selectedCustomer.city || "Santa Cruz"}</strong></span>
+                        </div>
+                        {currentDiscountPct > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <Percent className="w-3 h-3 text-emerald-600" />
+                            Descuento: {currentDiscountPct}% OFF
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-500 italic">
+                            Sin descuento por ciudad (0%)
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha de Entrega Estimada *</label>
@@ -623,8 +712,24 @@ export default function PedidosPage() {
                       </tbody>
                       <tfoot className="bg-slate-50 border-t border-slate-200 font-bold">
                         <tr>
-                          <td colSpan={3} className="p-3 text-right text-slate-600 uppercase text-[10px]">Total Pedido:</td>
-                          <td className="p-3 text-right text-sm text-slate-900">Bs. {cartItems.reduce((acc, i) => acc + (i.quantity * i.unitPrice), 0).toLocaleString("es-BO", { minimumFractionDigits: 2 })}</td>
+                          <td colSpan={3} className="p-2.5 text-right text-slate-500 uppercase text-[10px]">Subtotal:</td>
+                          <td className="p-2.5 text-right text-xs text-slate-700">Bs. {cartSubtotal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</td>
+                          <td></td>
+                        </tr>
+                        {currentDiscountPct > 0 && (
+                          <tr className="bg-emerald-50/70 text-emerald-800 border-t border-emerald-100">
+                            <td colSpan={3} className="p-2 text-right uppercase text-[10px] font-bold">
+                              Descuento por Ciudad ({selectedCustomer?.city || "Ciudad"} - {currentDiscountPct}%):
+                            </td>
+                            <td className="p-2 text-right text-xs font-bold text-emerald-700">
+                              - Bs. {cartDiscountAmount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                            </td>
+                            <td></td>
+                          </tr>
+                        )}
+                        <tr className="border-t border-slate-200 bg-orange-50/40">
+                          <td colSpan={3} className="p-3 text-right text-slate-900 uppercase text-[10px] font-black">Total Final:</td>
+                          <td className="p-3 text-right text-sm text-orange-700 font-black">Bs. {cartTotal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</td>
                           <td></td>
                         </tr>
                       </tfoot>
@@ -707,6 +812,9 @@ export default function PedidosPage() {
               <div className="space-y-2 print:space-y-1 text-sm print:text-xs">
                 <p><span className="font-bold">Fecha de Registro:</span> {new Date(receiptOrder.created_at || "").toLocaleDateString("es-BO")}</p>
                 <p><span className="font-bold">Cliente:</span> {customers.find(c => c.id === receiptOrder.customer_id)?.name}</p>
+                {(receiptOrder.city || customers.find(c => c.id === receiptOrder.customer_id)?.city) && (
+                  <p><span className="font-bold">Ciudad:</span> {receiptOrder.city || customers.find(c => c.id === receiptOrder.customer_id)?.city}</p>
+                )}
                 {receiptOrder.contact_phone && (
                   <p><span className="font-bold">Teléfono de Contacto:</span> {receiptOrder.contact_phone}</p>
                 )}
@@ -751,9 +859,33 @@ export default function PedidosPage() {
                 </tbody>
               </table>
 
-              <div className="text-right text-lg print:text-base font-bold">
-                Total: Bs. {(receiptOrder.items || []).reduce((acc, i) => acc + (i.quantity * i.unit_price), 0).toLocaleString("es-BO", { minimumFractionDigits: 2 })}
-              </div>
+              {(() => {
+                const subtotal = receiptOrder.subtotal !== undefined
+                  ? receiptOrder.subtotal
+                  : (receiptOrder.items || []).reduce((acc, i) => acc + (i.quantity * i.unit_price), 0);
+                const discountPct = receiptOrder.city_discount_pct || 0;
+                const discountAmount = receiptOrder.city_discount_amount || 0;
+                const total = receiptOrder.total_amount !== undefined
+                  ? receiptOrder.total_amount
+                  : Math.max(0, subtotal - discountAmount);
+
+                return (
+                  <div className="space-y-1.5 text-right text-sm">
+                    <div className="text-slate-600">
+                      Subtotal: <span className="font-semibold text-slate-800">Bs. {subtotal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    {discountPct > 0 && (
+                      <div className="text-emerald-700 font-medium">
+                        Descuento Ciudad ({receiptOrder.city || "Ciudad"} - {discountPct}%):{" "}
+                        <span className="font-bold">- Bs. {discountAmount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    <div className="text-lg print:text-base font-black text-slate-900 pt-1 border-t">
+                      Total a Pagar: Bs. {total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {receiptOrder.notes && (
                 <div className="text-xs pt-4 print:pt-2 border-t">

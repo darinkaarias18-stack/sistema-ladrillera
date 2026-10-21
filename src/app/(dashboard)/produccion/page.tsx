@@ -247,8 +247,8 @@ export default function ProduccionPage() {
       .reduce((acc, item) => acc + item.quantity_produced, 0);
   };
 
-  // Cálculo de totales por Horno (únicamente Horno 1, Horno 2, Horno 3)
-  const hornosList = ["Horno 1", "Horno 2", "Horno 3"];
+  // Cálculo de totales por Horno (únicamente Horno 1, Horno 2)
+  const hornosList = ["Horno 1", "Horno 2"];
   const totalProductionByHorno = hornosList.map((h) => {
     const qty = batches
       .filter((b) => (b.horno || "Horno 1") === h)
@@ -324,8 +324,8 @@ export default function ProduccionPage() {
           </div>
         </div>
 
-        {/* Resumen de Producción por Horno (Horno 1, Horno 2, Horno 3) + Total */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Resumen de Producción por Horno (Horno 1, Horno 2) + Total */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {totalProductionByHorno.map((item) => (
             <div key={item.horno} className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
@@ -405,7 +405,6 @@ export default function ProduccionPage() {
                   <th className="p-3.5">Tipo de Ladrillo</th>
                   <th className="p-3.5">Turno</th>
                   <th className="p-3.5 text-right">Cantidad Producida</th>
-                  <th className="p-3.5 text-center">Estado Lote</th>
                   <th className="p-3.5">Insumos & Observaciones</th>
                   <th className="p-3.5 text-right bg-orange-100/70 text-orange-950 font-extrabold">Total Vaciado Jornada</th>
                 </tr>
@@ -413,7 +412,7 @@ export default function ProduccionPage() {
               <tbody className="divide-y divide-slate-100">
                 {filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="p-6 text-center text-slate-400">
+                    <td colSpan={10} className="p-6 text-center text-slate-400">
                       No se encontraron vaciados registrados con los filtros seleccionados.
                     </td>
                   </tr>
@@ -505,15 +504,6 @@ export default function ProduccionPage() {
                           <td className="p-3.5 text-right font-mono font-bold text-slate-900 text-sm">
                             {b.quantity_produced.toLocaleString()} <span className="text-[10px] font-normal text-slate-500">unid.</span>
                           </td>
-                          <td className="p-3.5 text-center">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase border ${
-                              b.status === 'terminado' 
-                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300' 
-                                : 'bg-blue-100 text-blue-800 border-blue-300'
-                            }`}>
-                              {b.status === 'terminado' ? 'TERMINADO' : 'EN PROCESO'}
-                            </span>
-                          </td>
                           <td className="p-3.5 max-w-xs truncate">
                             {b.notes ? (
                               <span className="px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-950 text-[11px] font-medium inline-flex items-center">
@@ -535,7 +525,7 @@ export default function ProduccionPage() {
                         {/* Panel Acordeón Desplegable con Detalle por Número de Vaciado */}
                         {isExpanded && (
                           <tr className="bg-slate-950 text-white animate-in fade-in zoom-in-95 duration-150">
-                            <td colSpan={11} className="p-4 md:p-5 bg-slate-900 border-y-2 border-orange-500 shadow-inner">
+                            <td colSpan={10} className="p-4 md:p-5 bg-slate-900 border-y-2 border-orange-500 shadow-inner">
                               <div className="space-y-4">
                                 {/* Encabezado del Panel de Desglose */}
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
@@ -766,7 +756,6 @@ export default function ProduccionPage() {
                     >
                       <option value="Horno 1">🔥 Horno 1</option>
                       <option value="Horno 2">🔥 Horno 2</option>
-                      <option value="Horno 3">🔥 Horno 3</option>
                     </select>
                   </div>
 
@@ -1139,7 +1128,7 @@ export default function ProduccionPage() {
                 </div>
                 <div>
                   <span className="block font-bold text-slate-700 text-[11px]">Horno Asignado / Destino:</span>
-                  <span className="block mt-2 font-medium text-slate-800 font-bold">[  ] Horno 1   [  ] Horno 2   [  ] Horno 3</span>
+                  <span className="block mt-2 font-medium text-slate-800 font-bold">[  ] Horno 1   [  ] Horno 2</span>
                 </div>
                 <div>
                   <span className="block font-bold text-slate-700 text-[11px]">Turno de Trabajo:</span>

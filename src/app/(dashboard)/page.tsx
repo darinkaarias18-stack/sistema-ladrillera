@@ -485,7 +485,7 @@ export default function DashboardPage() {
                         {h.fase}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-600 font-semibold">
+                    <div className="text-xs text-slate-600 font-semibold" suppressHydrationWarning>
                       <strong className="text-slate-900">{h.enCoccion.toLocaleString()}</strong> / {h.capacidad.toLocaleString()} unid. ({h.porcentaje}%)
                     </div>
                   </div>

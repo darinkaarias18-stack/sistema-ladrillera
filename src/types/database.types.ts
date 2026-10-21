@@ -1,4 +1,11 @@
-export type UserRole = 'superadmin' | 'admin' | 'produccion' | 'ventas';
+export type UserRole = 
+  | 'superadmin' 
+  | 'admin' 
+  | 'cajero' 
+  | 'entrega_recepcion' 
+  | 'ing_produccion' 
+  | 'produccion' 
+  | 'ventas';
 
 export type PayFrequency = 'semanal' | 'quincenal' | 'mensual';
 
@@ -31,6 +38,7 @@ export interface Profile {
   role: UserRole;
   email?: string;
   position?: string;
+  allowed_modules?: string[];
   created_at: string;
 }
 
@@ -108,8 +116,17 @@ export interface Customer {
   name: string;
   phone?: string;
   address?: string;
+  city?: string;
   department?: string;
   created_at?: string;
+}
+
+export interface CityDiscount {
+  id: string;
+  city: string;
+  discount_percentage: number; // e.g. 5 para 5%
+  description?: string;
+  active: boolean;
 }
 
 export interface OrderItem {
@@ -135,6 +152,11 @@ export interface Order {
   contact_phone?: string;
   driver_id?: string;
   notes?: string;
+  city?: string;
+  city_discount_pct?: number;
+  city_discount_amount?: number;
+  subtotal?: number;
+  total_amount?: number;
   created_at: string;
   customer?: Customer;
   items?: OrderItem[];
@@ -248,4 +270,65 @@ export interface EmployeeSettlement {
   created_by?: string;
   created_at?: string;
   employee?: Employee;
+}
+
+export type HornoStatus = 'cargando' | 'en_quema' | 'enfriando' | 'deshorne' | 'finalizado' | 'disponible';
+
+export interface HornoCycle {
+  id: string;
+  folio: string;
+  horno_number: string;
+  fecha_ingreso: string;
+  hora_ingreso: string;
+  brick_type_id: string;
+  cantidad_ingreso: number;
+  quemador_id: string;
+  combustible?: string;
+  temperatura_estimada?: number;
+  status: HornoStatus;
+  fecha_salida?: string;
+  hora_salida?: string;
+  cantidad_salida_primera?: number;
+  cantidad_salida_segunda?: number;
+  cantidad_merma?: number;
+  total_salida?: number;
+  rendimiento_pct?: number;
+  merma_pct?: number;
+  supervisor?: string;
+  notes?: string;
+  created_at: string;
+  brick_type?: BrickType;
+  quemador?: Employee;
+}
+
+export type PatioDespachoEstado = 'en_carguio' | 'despachado' | 'anulado';
+export type PatioTipoRetiro = 'cliente_recojo' | 'transporte_planta';
+
+export interface PatioDespachoItem {
+  brick_type_id: string;
+  brick_name: string;
+  cantidad: number;
+}
+
+export interface PatioDespacho {
+  id: string;
+  folio: string;
+  fecha: string;
+  hora_ingreso: string;
+  hora_salida?: string;
+  cliente_id?: string;
+  cliente_nombre: string;
+  placa_camion: string;
+  chofer_nombre: string;
+  chofer_telefono?: string;
+  tipo_retiro: PatioTipoRetiro;
+  bahia_carga: string;
+  items: PatioDespachoItem[];
+  total_unidades: number;
+  cuadrilla_estibadores?: string;
+  estado: PatioDespachoEstado;
+  order_id?: string;
+  encargado_patio: string;
+  notes?: string;
+  created_at: string;
 }

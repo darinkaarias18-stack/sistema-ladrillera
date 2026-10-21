@@ -1,17 +1,42 @@
 "use client"
 
-import { useState } from "react"
-import { Profile } from "@/types/database.types"
+import { useState, useEffect } from "react"
+import { Profile, UserRole, Employee } from "@/types/database.types"
+import { store } from "@/lib/store"
 import { createUserAction, deleteUserAction, updateUserAction } from "./actions"
-import { Plus, Search, UserPlus, Mail, Briefcase, Shield, KeyRound, Loader2, X, MoreVertical, Pencil, Trash2, Edit } from "lucide-react"
+import {
+  Plus,
+  Search,
+  UserPlus,
+  Mail,
+  Briefcase,
+  Shield,
+  KeyRound,
+  Loader2,
+  X,
+  Pencil,
+  Trash2,
+  RotateCcw,
+  CheckSquare,
+  Square
+} from "lucide-react"
+import {
+  SYSTEM_MODULES,
+  DEFAULT_ROLE_MODULES,
+  getAllModuleHrefs
+} from "@/lib/modules-config"
 
 interface UsersClientProps {
   initialProfiles: Profile[]
   currentUserRole: string
+  employees?: Employee[]
 }
 
-export function UsersClient({ initialProfiles, currentUserRole }: UsersClientProps) {
+export function UsersClient({ initialProfiles, currentUserRole, employees: propEmployees }: UsersClientProps) {
   const [profiles, setProfiles] = useState<Profile[]>(initialProfiles)
+  const [employeeList, setEmployeeList] = useState<Employee[]>(
+    propEmployees && propEmployees.length > 0 ? propEmployees : store.getEmployees().filter(e => e.active)
+  )
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [search, setSearch] = useState("")
   
@@ -19,9 +44,30 @@ export function UsersClient({ initialProfiles, currentUserRole }: UsersClientPro
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
-  // Form states
+  // Form states for employee, full name & position
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("")
+  const [fullNameValue, setFullNameValue] = useState<string>("")
+  const [positionValue, setPositionValue] = useState<string>("")
+
+  // Form states for modules & role
+  const [selectedRole, setSelectedRole] = useState<string>("cajero")
+  const [selectedModules, setSelectedModules] = useState<string[]>([])
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const refresh = () => {
+      setEmployeeList(store.getEmployees().filter((e) => e.active))
+    }
+    refresh()
+    window.addEventListener("erp_employees_updated", refresh)
+    window.addEventListener("storage", refresh)
+    return () => {
+      window.removeEventListener("erp_employees_updated", refresh)
+      window.removeEventListener("storage", refresh)
+    }
+  }, [])
   
   const filteredProfiles = profiles.filter(p => 
     p.full_name?.toLowerCase().includes(search.toLowerCase()) ||
@@ -34,8 +80,20 @@ export function UsersClient({ initialProfiles, currentUserRole }: UsersClientPro
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    const finalFullName = fullNameValue.trim()
+    const finalPosition = positionValue.trim()
+
+    if (!finalFullName) {
+      setError("Debes seleccionar un empleado de la nómina de empleados.")
+      setLoading(false)
+      return
+    }
     
     const formData = new FormData(e.currentTarget)
+    formData.set("allowed_modules", JSON.stringify(selectedModules))
+    formData.set("full_name", finalFullName)
+    formData.set("position", finalPosition)
     
     try {
       let result;
@@ -79,20 +137,126 @@ export function UsersClient({ initialProfiles, currentUserRole }: UsersClientPro
   }
 
   const openEditModal = (profile: Profile) => {
+    const currentEmployees = store.getEmployees().filter((e) => e.active)
+    setEmployeeList(currentEmployees)
     setEditingProfile(profile)
+    setSelectedRole(profile.role)
+    const initialMods = profile.allowed_modules && profile.allowed_modules.length > 0
+      ? profile.allowed_modules
+      : (DEFAULT_ROLE_MODULES[profile.role as UserRole] || getAllModuleHrefs())
+    setSelectedModules(initialMods)
+
+    const matchedEmp = currentEmployees.find(
+      (e) => e.full_name.toLowerCase() === (profile.full_name || "").toLowerCase()
+    )
+    if (matchedEmp) {
+      setSelectedEmployeeId(matchedEmp.id)
+      setFullNameValue(matchedEmp.full_name)
+      setPositionValue(matchedEmp.position || profile.position || "")
+    } else {
+      setSelectedEmployeeId("")
+      setFullNameValue(profile.full_name || "")
+      setPositionValue(profile.position || "")
+    }
+
     setError(null)
     setIsModalOpen(true)
   }
 
   const openCreateModal = () => {
+    const currentEmployees = store.getEmployees().filter((e) => e.active)
+    setEmployeeList(currentEmployees)
     setEditingProfile(null)
+    const initialRole = "cajero"
+    setSelectedRole(initialRole)
+    setSelectedModules(DEFAULT_ROLE_MODULES[initialRole] || [])
+    setSelectedEmployeeId("")
+    setFullNameValue("")
+    setPositionValue("")
     setError(null)
     setIsModalOpen(true)
+  }
+
+  const handleEmployeeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value
+    setSelectedEmployeeId(val)
+    if (val) {
+      const emp = employeeList.find((e) => e.id === val)
+      if (emp) {
+        setFullNameValue(emp.full_name)
+        setPositionValue(emp.position)
+
+        // Preseleccionar rol recomendado según cargo al crear un usuario nuevo
+        if (!editingProfile) {
+          const pos = emp.position.toLowerCase()
+          let suggestedRole: UserRole | null = null
+          if (pos.includes("moldeador") || pos.includes("operador") || pos.includes("carga")) {
+            suggestedRole = "produccion"
+          } else if (pos.includes("chofer") || pos.includes("despacho") || pos.includes("entrega")) {
+            suggestedRole = "entrega_recepcion"
+          } else if (pos.includes("quemador") || pos.includes("horno") || pos.includes("ingeniero")) {
+            suggestedRole = "ing_produccion"
+          } else if (pos.includes("cajer") || pos.includes("caja")) {
+            suggestedRole = "cajero"
+          } else if (pos.includes("venta")) {
+            suggestedRole = "ventas"
+          }
+          if (suggestedRole && DEFAULT_ROLE_MODULES[suggestedRole]) {
+            setSelectedRole(suggestedRole)
+            setSelectedModules(DEFAULT_ROLE_MODULES[suggestedRole])
+          }
+        }
+      }
+    } else {
+      setFullNameValue("")
+      setPositionValue("")
+    }
+  }
+
+  const handleRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newRole = e.target.value
+    setSelectedRole(newRole)
+    // Update default allowed modules to match newly selected role
+    if (DEFAULT_ROLE_MODULES[newRole as UserRole]) {
+      setSelectedModules(DEFAULT_ROLE_MODULES[newRole as UserRole])
+    }
+  }
+
+  const handleToggleModule = (href: string) => {
+    setSelectedModules(prev => 
+      prev.includes(href) ? prev.filter(h => h !== href) : [...prev, href]
+    )
+  }
+
+  const handleToggleGroup = (groupHrefs: string[]) => {
+    const allSelected = groupHrefs.every(h => selectedModules.includes(h))
+    if (allSelected) {
+      setSelectedModules(prev => prev.filter(h => !groupHrefs.includes(h)))
+    } else {
+      setSelectedModules(prev => Array.from(new Set([...prev, ...groupHrefs])))
+    }
+  }
+
+  const handleSelectAll = () => {
+    setSelectedModules(getAllModuleHrefs())
+  }
+
+  const handleDeselectAll = () => {
+    setSelectedModules([])
+  }
+
+  const handleResetToRoleDefault = () => {
+    if (DEFAULT_ROLE_MODULES[selectedRole as UserRole]) {
+      setSelectedModules(DEFAULT_ROLE_MODULES[selectedRole as UserRole])
+    }
   }
 
   const roleColors: Record<string, string> = {
     superadmin: "bg-slate-900 text-orange-400 border-slate-700",
     admin: "bg-slate-100 text-slate-700 border-slate-300",
+    cajero: "bg-emerald-100 text-emerald-800 border-emerald-300",
+    entrega_recepcion: "bg-indigo-100 text-indigo-800 border-indigo-300",
+    ing_produccion: "bg-amber-100 text-amber-800 border-amber-300",
     ventas: "bg-orange-50 text-orange-600 border-orange-200",
     produccion: "bg-blue-50 text-blue-600 border-blue-200",
   }
@@ -100,9 +264,14 @@ export function UsersClient({ initialProfiles, currentUserRole }: UsersClientPro
   const roleNames: Record<string, string> = {
     superadmin: "Super Admin",
     admin: "Administrador",
+    cajero: "Cajero/Cajera",
+    entrega_recepcion: "Entrega y Recepción",
+    ing_produccion: "Ing. de Producción",
     ventas: "Vendedor",
     produccion: "Operador",
   }
+
+  const totalPossibleModules = getAllModuleHrefs().length
 
   return (
     <div className="space-y-6">
@@ -116,13 +285,13 @@ export function UsersClient({ initialProfiles, currentUserRole }: UsersClientPro
             {profiles.length}
           </div>
           <p className="text-slate-400 mt-2 text-sm">
-            Refleja el personal con acceso al sistema ERP y sus roles.
+            Refleja el personal con acceso al sistema ERP, sus roles y módulos personalizados.
           </p>
         </div>
         
         <button
           onClick={openCreateModal}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-orange-900/50 hover:shadow-orange-600/30 border border-orange-500/30"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-orange-600 hover:bg-orange-700 text-white px-6 py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-orange-900/50 hover:shadow-orange-600/30 border border-orange-500/30 cursor-pointer"
         >
           <Plus className="w-5 h-5" />
           Crear Usuario
@@ -156,205 +325,397 @@ export function UsersClient({ initialProfiles, currentUserRole }: UsersClientPro
                 <th className="p-4 py-3">Cargo</th>
                 <th className="p-4 py-3">Correo Electrónico</th>
                 <th className="p-4 py-3">Rol</th>
+                <th className="p-4 py-3">Módulos Habilitados</th>
                 <th className="p-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 text-sm">
               {filteredProfiles.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-slate-500">
+                  <td colSpan={6} className="p-8 text-center text-slate-500">
                     No se encontraron usuarios.
                   </td>
                 </tr>
               ) : (
-                filteredProfiles.map((profile) => (
-                  <tr key={profile.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-orange-400 flex items-center justify-center text-white font-bold shadow-sm">
-                          {profile.full_name.charAt(0).toUpperCase()}
+                filteredProfiles.map((profile) => {
+                  const isSuper = profile.role === "superadmin";
+                  const activeModulesCount = profile.allowed_modules && profile.allowed_modules.length > 0
+                    ? profile.allowed_modules.length
+                    : (DEFAULT_ROLE_MODULES[profile.role as UserRole] || []).length;
+
+                  return (
+                    <tr key={profile.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-orange-400 flex items-center justify-center text-white font-bold shadow-sm">
+                            {profile.full_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="font-medium text-slate-900">{profile.full_name}</div>
                         </div>
-                        <div className="font-medium text-slate-900">{profile.full_name}</div>
-                      </div>
-                    </td>
-                    <td className="p-4 text-slate-600">
-                      {profile.position || <span className="text-slate-400 italic">No definido</span>}
-                    </td>
-                    <td className="p-4 text-slate-600">
-                      {profile.email || <span className="text-slate-400 italic">Sin correo</span>}
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${roleColors[profile.role] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
-                        {roleNames[profile.role] || profile.role}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => openEditModal(profile)}
-                          disabled={profile.role === 'superadmin' && currentUserRole !== 'superadmin'}
-                          className={`transition-colors p-1.5 rounded-md ${profile.role === 'superadmin' && currentUserRole !== 'superadmin' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-orange-600 hover:bg-orange-50'}`}
-                          title={profile.role === 'superadmin' && currentUserRole !== 'superadmin' ? "Solo los SuperAdmins pueden editar a otro SuperAdmin" : "Editar Usuario"}
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(profile.id)}
-                          disabled={isDeleting === profile.id || profile.role === 'superadmin'}
-                          className={`transition-colors p-1.5 rounded-md ${profile.role === 'superadmin' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50'}`}
-                          title={profile.role === 'superadmin' ? "Nadie puede eliminar a un Super Administrador" : "Eliminar Usuario"}
-                        >
-                          {isDeleting === profile.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="p-4 text-slate-600">
+                        {profile.position || <span className="text-slate-400 italic">No definido</span>}
+                      </td>
+                      <td className="p-4 text-slate-600">
+                        {profile.email || <span className="text-slate-400 italic">Sin correo</span>}
+                      </td>
+                      <td className="p-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${roleColors[profile.role] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
+                          {roleNames[profile.role] || profile.role}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        {isSuper ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 border border-purple-200">
+                            <Shield className="w-3.5 h-3.5 text-purple-600" />
+                            Acceso Total (Todos)
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 cursor-help"
+                            title={
+                              profile.allowed_modules && profile.allowed_modules.length > 0
+                                ? `Rutas activas: ${profile.allowed_modules.join(', ')}`
+                                : "Configurado con los accesos por defecto del rol"
+                            }
+                          >
+                            <CheckSquare className="w-3.5 h-3.5 text-emerald-600" />
+                            {activeModulesCount} / {totalPossibleModules} módulos activos
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-4 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button 
+                            onClick={() => openEditModal(profile)}
+                            disabled={profile.role === 'superadmin' && currentUserRole !== 'superadmin'}
+                            className={`transition-colors p-1.5 rounded-md ${profile.role === 'superadmin' && currentUserRole !== 'superadmin' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer'}`}
+                            title={profile.role === 'superadmin' && currentUserRole !== 'superadmin' ? "Solo los SuperAdmins pueden editar a otro SuperAdmin" : "Editar Usuario y Módulos"}
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(profile.id)}
+                            disabled={isDeleting === profile.id || profile.role === 'superadmin'}
+                            className={`transition-colors p-1.5 rounded-md ${profile.role === 'superadmin' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 cursor-pointer'}`}
+                            title={profile.role === 'superadmin' ? "Nadie puede eliminar a un Super Administrador" : "Eliminar Usuario"}
+                          >
+                            {isDeleting === profile.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal Crear Usuario */}
+      {/* Modal Crear / Editar Usuario con Selección de Módulos */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div 
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" 
             onClick={() => setIsModalOpen(false)}
           />
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h2 className="text-xl font-bold text-slate-900">
-                {editingProfile ? "Editar Usuario" : "Registrar Nuevo Empleado"}
-              </h2>
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 z-10 my-8">
+            {/* Header Fijo */}
+            <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50 shrink-0">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  {editingProfile ? "Editar Usuario y Permisos" : "Registrar Nuevo Usuario"}
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Define el rol del usuario y activa los módulos que podrá visualizar en el sistema.
+                </p>
+              </div>
               <button 
                 onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors"
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
-                  {error}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre Completo</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <UserPlus className="h-5 w-5 text-slate-400" />
+            <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden min-h-0">
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                {error && (
+                  <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
+                    {error}
                   </div>
-                  <input
-                    name="full_name"
-                    type="text"
-                    defaultValue={editingProfile?.full_name || ""}
-                    required
-                    className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm"
-                    placeholder="Ej. Juan Pérez"
-                  />
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Nombre Completo *
+                    </label>
+
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <UserPlus className="h-4 w-4 text-slate-400" />
+                      </div>
+                      <select
+                        id="select-nomina-empleados"
+                        value={selectedEmployeeId}
+                        onFocus={() => {
+                          setEmployeeList(store.getEmployees().filter((e) => e.active))
+                        }}
+                        onChange={handleEmployeeChange}
+                        required
+                        className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white cursor-pointer"
+                      >
+                        <option value="">-- Seleccionar de Nómina de Empleados --</option>
+                        {editingProfile && editingProfile.full_name && !employeeList.some(emp => emp.id === selectedEmployeeId || emp.full_name.toLowerCase() === editingProfile.full_name?.toLowerCase()) && (
+                          <option value="current">{editingProfile.full_name} ({editingProfile.position || "Actual"})</option>
+                        )}
+                        {employeeList.map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.full_name} — {emp.position}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Cargo *</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Briefcase className="h-4 w-4 text-slate-400" />
+                      </div>
+                      <input
+                        name="position"
+                        type="text"
+                        value={positionValue}
+                        onChange={(e) => setPositionValue(e.target.value)}
+                        required
+                        className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white"
+                        placeholder="Ej. Cajero Turno Mañana"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico *</label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Mail className="h-4 w-4 text-slate-400" />
+                      </div>
+                      <input
+                        name="email"
+                        type="email"
+                        defaultValue={editingProfile?.email || ""}
+                        required={!editingProfile}
+                        disabled={!!editingProfile}
+                        className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm disabled:bg-slate-100 disabled:text-slate-500 bg-white"
+                        placeholder="usuario@empresa.com"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Contraseña {editingProfile ? "(Opcional)" : "*"}
+                    </label>
+                    <div className="relative">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <KeyRound className="h-4 w-4 text-slate-400" />
+                      </div>
+                      <input
+                        name="password"
+                        type="text"
+                        required={!editingProfile}
+                        className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white"
+                        placeholder={editingProfile ? "Dejar en blanco para no cambiar" : "Mínimo 8 caracteres"}
+                        minLength={8}
+                        maxLength={20}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Rol de Acceso *</label>
+                  <div className="relative">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Shield className="h-4 w-4 text-slate-400" />
+                    </div>
+                    <select
+                      name="role"
+                      required
+                      value={selectedRole}
+                      onChange={handleRoleChange}
+                      className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white cursor-pointer"
+                    >
+                      {/* El rol de SuperAdmin SOLO se muestra si quien está logueado es SuperAdmin */}
+                      {currentUserRole === "superadmin" && (
+                        <option value="superadmin">Super Administrador (Control Total)</option>
+                      )}
+                      <option value="admin">Administrador (Admin)</option>
+                      <option value="cajero">Cajero/Cajera</option>
+                      <option value="entrega_recepcion">Entrega y Recepción</option>
+                      <option value="ing_produccion">Ing. de Producción</option>
+                      <option value="ventas">Vendedor (Ventas)</option>
+                      <option value="produccion">Operador (Producción)</option>
+                    </select>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Al seleccionar un rol, se cargarán automáticamente sus módulos recomendados. Puedes personalizarlos abajo.
+                  </p>
+                </div>
+
+                {/* SECCIÓN: MÓDULOS HABILITADOS */}
+                <div className="pt-3 border-t border-slate-200">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                        Módulos Habilitados para este Usuario
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        Selecciona qué módulos y vistas se mostrarán en su menú lateral.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleSelectAll}
+                        className="text-[10px] font-bold text-slate-700 hover:text-orange-600 px-2 py-1 bg-slate-100 hover:bg-orange-50 rounded border border-slate-200 transition cursor-pointer"
+                      >
+                        Todos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeselectAll}
+                        className="text-[10px] font-bold text-slate-700 hover:text-red-600 px-2 py-1 bg-slate-100 hover:bg-red-50 rounded border border-slate-200 transition cursor-pointer"
+                      >
+                        Ninguno
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetToRoleDefault}
+                        className="text-[10px] font-bold text-slate-700 hover:text-blue-600 px-2 py-1 bg-slate-100 hover:bg-blue-50 rounded border border-slate-200 transition flex items-center gap-1 cursor-pointer"
+                        title="Restablecer a los módulos recomendados según el rol seleccionado"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Por Defecto Rol
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-60 overflow-y-auto space-y-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                    {SYSTEM_MODULES.map((group) => {
+                      // Grupo sin submódulos (ej. Dashboard, Caja, Reportes, Usuarios)
+                      if (!group.subModules && group.href) {
+                        const isChecked = selectedModules.includes(group.href);
+                        return (
+                          <label
+                            key={group.id}
+                            className={`flex items-start gap-2.5 p-2 rounded-lg border cursor-pointer transition ${
+                              isChecked ? 'bg-orange-50/70 border-orange-300 text-slate-900 font-medium' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100/60'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleModule(group.href!)}
+                              className="mt-0.5 w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
+                            />
+                            <div>
+                              <span className="font-bold text-slate-800 block">{group.name}</span>
+                              {group.description && <span className="text-[10px] text-slate-500">{group.description}</span>}
+                            </div>
+                          </label>
+                        );
+                      }
+
+                      // Grupo con submódulos (Empleados, Producción, Pedidos & Entregas)
+                      const subHrefs = group.subModules?.map(s => s.href) || [];
+                      const checkedCount = subHrefs.filter(h => selectedModules.includes(h)).length;
+                      const allChecked = checkedCount === subHrefs.length && subHrefs.length > 0;
+                      const someChecked = checkedCount > 0 && !allChecked;
+
+                      return (
+                        <div key={group.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+                          {/* Cabecera del grupo */}
+                          <div className="p-2 bg-slate-100/80 border-b border-slate-200 flex items-center justify-between">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                              <input
+                                type="checkbox"
+                                checked={allChecked}
+                                ref={el => {
+                                  if (el) el.indeterminate = someChecked;
+                                }}
+                                onChange={() => handleToggleGroup(subHrefs)}
+                                className="w-4 h-4 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
+                              />
+                              <span className="font-bold text-slate-800 text-xs">{group.name}</span>
+                            </label>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                              {checkedCount} / {subHrefs.length} activos
+                            </span>
+                          </div>
+
+                          {/* Submódulos del grupo */}
+                          <div className="p-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {group.subModules?.map((sub) => {
+                              const isChecked = selectedModules.includes(sub.href);
+                              return (
+                                <label
+                                  key={sub.id}
+                                  className={`flex items-start gap-2 p-1.5 rounded-md border cursor-pointer transition select-none ${
+                                    isChecked ? 'bg-orange-50/60 border-orange-200 text-slate-900 font-medium' : 'bg-slate-50/50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => handleToggleModule(sub.href)}
+                                    className="mt-0.5 w-3.5 h-3.5 text-orange-600 rounded border-slate-300 focus:ring-orange-500 cursor-pointer"
+                                  />
+                                  <div>
+                                    <span className="font-semibold text-slate-800 block text-xs">{sub.name}</span>
+                                    {sub.description && <span className="text-[10px] text-slate-400 leading-tight block">{sub.description}</span>}
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] text-slate-500 mt-2 px-1">
+                    <span>Módulos seleccionados:</span>
+                    <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      {selectedModules.length} de {totalPossibleModules} habilitados
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cargo</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Briefcase className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    name="position"
-                    type="text"
-                    defaultValue={editingProfile?.position || ""}
-                    required
-                    className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm"
-                    placeholder="Ej. Supervisor de Planta"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Correo Electrónico</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Mail className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    name="email"
-                    type="email"
-                    defaultValue={editingProfile?.email || ""}
-                    required={!editingProfile}
-                    disabled={!!editingProfile} // Email change is disabled for simplicity in edit mode
-                    className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm disabled:bg-slate-100 disabled:text-slate-500"
-                    placeholder="juan@empresa.com"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Contraseña de Acceso {editingProfile && "(Opcional)"}
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <KeyRound className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <input
-                    name="password"
-                    type="text"
-                    required={!editingProfile}
-                    className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm"
-                    placeholder={editingProfile ? "Dejar en blanco para no cambiar" : "De 8 a 12 caracteres"}
-                    minLength={8}
-                    maxLength={12}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Rol de Acceso</label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Shield className="h-5 w-5 text-slate-400" />
-                  </div>
-                  <select
-                    name="role"
-                    required
-                    defaultValue={editingProfile?.role || ""}
-                    className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white"
-                  >
-                    <option value="" disabled>Selecciona un rol...</option>
-                    {editingProfile?.role === "superadmin" && (
-                      <option value="superadmin">Super Administrador (Control Total)</option>
-                    )}
-                    <option value="admin">Administrador (Admin)</option>
-                    <option value="ventas">Vendedor (Seller)</option>
-                    <option value="produccion">Operador (Operator)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="pt-4 flex gap-3">
+              {/* Footer Fijo */}
+              <div className="p-4 border-t border-slate-200 flex gap-3 bg-slate-50 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium"
+                  className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors text-sm font-medium cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-all text-sm font-bold disabled:opacity-50 shadow-md shadow-orange-900/20 flex items-center justify-center gap-2"
+                  className="flex-1 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-lg transition-all text-sm font-bold disabled:opacity-50 shadow-md shadow-orange-900/20 flex items-center justify-center gap-2 cursor-pointer"
                 >
                   {loading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    "Guardar Usuario"
+                    editingProfile ? "Guardar Cambios" : "Crear Usuario"
                   )}
                 </button>
               </div>

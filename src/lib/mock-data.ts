@@ -11,7 +11,10 @@ import {
   PayrollDetail,
   EmployeeAdvance,
   CashLedgerEntry,
-  Profile
+  Profile,
+  HornoCycle,
+  PatioDespacho,
+  CityDiscount
 } from "@/types/database.types";
 
 export const INITIAL_PROFILES: Profile[] = [
@@ -198,7 +201,7 @@ export const INITIAL_PRODUCTION_BATCHES: ProductionBatch[] = [
     quantity_produced: 3300,
     status: "horno",
     folio_number: "FOL-00129",
-    horno: "Horno 3",
+    horno: "Horno 1",
     notes: "Cocción de ladrillo 6H cuadrado en cámara 2"
   },
   {
@@ -258,7 +261,7 @@ export const INITIAL_PRODUCTION_BATCHES: ProductionBatch[] = [
     quantity_produced: 3400,
     status: "terminado",
     folio_number: "FOL-00124",
-    horno: "Horno 3",
+    horno: "Horno 2",
     notes: "Ladrillo 6H normal llevado a bodega principal"
   },
   {
@@ -299,14 +302,25 @@ export const INITIAL_PRODUCTION_BATCHES: ProductionBatch[] = [
   }
 ];
 
+export const INITIAL_CITY_DISCOUNTS: CityDiscount[] = [
+  { id: "cd-1", city: "Santa Cruz", discount_percentage: 0, description: "Tarifa estándar local de fábrica", active: true },
+  { id: "cd-2", city: "Montero", discount_percentage: 5, description: "Descuento regional Zona Norte", active: true },
+  { id: "cd-3", city: "Warnes", discount_percentage: 8, description: "Convenio Parque Industrial", active: true },
+  { id: "cd-4", city: "Cotoca", discount_percentage: 4, description: "Ruta Este / Santuario", active: true },
+  { id: "cd-5", city: "La Paz", discount_percentage: 10, description: "Compensación flete larga distancia", active: true },
+  { id: "cd-6", city: "Cochabamba", discount_percentage: 6, description: "Descuento distribuidor Valle", active: true },
+  { id: "cd-7", city: "El Alto", discount_percentage: 10, description: "Distribución Altiplano", active: true },
+  { id: "cd-8", city: "Tarija", discount_percentage: 7, description: "Zona Sur", active: true },
+];
+
 export const INITIAL_CUSTOMERS: Customer[] = [
-  { id: "cust-1", name: "Constructora Norte S.A.", phone: "712-34567", address: "Av. Las Américas #450" },
-  { id: "cust-2", name: "Feria de Materiales San José", phone: "689-11223", address: "Calle Industrial #12" },
-  { id: "cust-3", name: "Ing. Juan Pablo Morales", phone: "700-98765", address: "Urb. Los Pinos Mz B" },
-  { id: "cust-4", name: "Consorcio Constructor del Oriente", phone: "755-43210", address: "Av. Banzer 4to Anillo" },
-  { id: "cust-5", name: "Constructora Los Tajibos", phone: "780-99881", address: "Km 9 Carretera al Norte" },
-  { id: "cust-6", name: "Distribuidora Warnes Materiales", phone: "763-12456", address: "Av. Principal Warnes #88" },
-  { id: "cust-7", name: "Urbanización Las Palmas S.R.L.", phone: "721-66778", address: "Radial 19 Doble Vía" }
+  { id: "cust-1", name: "Constructora Norte S.A.", phone: "712-34567", address: "Av. Las Américas #450", city: "Montero", department: "Santa Cruz" },
+  { id: "cust-2", name: "Feria de Materiales San José", phone: "689-11223", address: "Calle Industrial #12", city: "Santa Cruz", department: "Santa Cruz" },
+  { id: "cust-3", name: "Ing. Juan Pablo Morales", phone: "700-98765", address: "Urb. Los Pinos Mz B", city: "Warnes", department: "Santa Cruz" },
+  { id: "cust-4", name: "Consorcio Constructor del Oriente", phone: "755-43210", address: "Av. Banzer 4to Anillo", city: "Santa Cruz", department: "Santa Cruz" },
+  { id: "cust-5", name: "Constructora Los Tajibos", phone: "780-99881", address: "Km 9 Carretera al Norte", city: "Cotoca", department: "Santa Cruz" },
+  { id: "cust-6", name: "Distribuidora Warnes Materiales", phone: "763-12456", address: "Av. Principal Warnes #88", city: "Warnes", department: "Santa Cruz" },
+  { id: "cust-7", name: "Urbanización Las Palmas S.R.L.", phone: "721-66778", address: "Radial 19 Doble Vía", city: "La Paz", department: "La Paz" }
 ];
 
 export const INITIAL_SALES: Sale[] = [
@@ -431,6 +445,7 @@ export const INITIAL_PAYROLL_PERIODS: PayrollPeriod[] = [
 ];
 
 export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
+  // PERIOD-1 (Semanal: 24/08/2026 al 30/08/2026) - Todos los empleados de la nómina
   {
     id: "pay-1",
     period_id: "period-1",
@@ -465,6 +480,88 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
   },
   {
     id: "pay-3",
+    period_id: "period-1",
+    employee_id: "emp-3",
+    base_amount: 950,
+    antiquity_bonus: 47.50,
+    frontier_bonus: 50,
+    production_bonus: 0,
+    total_earned: 1047.50,
+    deductions: 0,
+    mid_period_advance: 0,
+    personal_advances: 100,
+    net_pay: 947.50,
+    paid: false,
+    signed: false
+  },
+  {
+    id: "pay-4",
+    period_id: "period-1",
+    employee_id: "emp-4",
+    base_amount: 850,
+    antiquity_bonus: 42.50,
+    frontier_bonus: 37.50,
+    production_bonus: 0,
+    total_earned: 930,
+    deductions: 0,
+    mid_period_advance: 0,
+    personal_advances: 0,
+    net_pay: 930,
+    paid: false,
+    signed: false
+  },
+  {
+    id: "pay-5",
+    period_id: "period-1",
+    employee_id: "emp-5",
+    base_amount: 1200,
+    antiquity_bonus: 0,
+    frontier_bonus: 0,
+    production_bonus: 0,
+    total_earned: 1200,
+    deductions: 0,
+    mid_period_advance: 0,
+    personal_advances: 50,
+    net_pay: 1150,
+    paid: false,
+    signed: false
+  },
+
+  // PERIOD-2 (Mensual: 01/08/2026 al 31/08/2026) - Todos los empleados de la nómina
+  {
+    id: "pay-6",
+    period_id: "period-2",
+    employee_id: "emp-1",
+    base_amount: 0,
+    antiquity_bonus: 0,
+    frontier_bonus: 0,
+    production_bonus: 4200,
+    total_earned: 4200,
+    deductions: 0,
+    mid_period_advance: 0,
+    personal_advances: 400,
+    net_pay: 3800,
+    paid: true,
+    signed: true
+  },
+  {
+    id: "pay-7",
+    period_id: "period-2",
+    employee_id: "emp-2",
+    base_amount: 0,
+    antiquity_bonus: 0,
+    frontier_bonus: 0,
+    production_bonus: 3200,
+    total_earned: 3200,
+    deductions: 0,
+    mid_period_advance: 0,
+    personal_advances: 200,
+    net_pay: 3000,
+    paid: true,
+    signed: true
+  },
+  {
+    id: "pay-8",
     period_id: "period-2",
     employee_id: "emp-3",
     base_amount: 3800,
@@ -476,6 +573,38 @@ export const INITIAL_PAYROLL_DETAILS: PayrollDetail[] = [
     mid_period_advance: 1900,
     personal_advances: 200,
     net_pay: 2090,
+    paid: true,
+    signed: true
+  },
+  {
+    id: "pay-9",
+    period_id: "period-2",
+    employee_id: "emp-4",
+    base_amount: 3400,
+    antiquity_bonus: 170,
+    frontier_bonus: 150,
+    production_bonus: 0,
+    total_earned: 3720,
+    deductions: 0,
+    mid_period_advance: 1700,
+    personal_advances: 0,
+    net_pay: 2020,
+    paid: true,
+    signed: true
+  },
+  {
+    id: "pay-10",
+    period_id: "period-2",
+    employee_id: "emp-5",
+    base_amount: 4800,
+    antiquity_bonus: 0,
+    frontier_bonus: 0,
+    production_bonus: 0,
+    total_earned: 4800,
+    deductions: 0,
+    mid_period_advance: 2400,
+    personal_advances: 200,
+    net_pay: 2200,
     paid: true,
     signed: true
   }
@@ -801,5 +930,113 @@ export const INITIAL_ORDERS: Order[] = [
     items: [
       { id: "item-init-3", order_id: "ord-897320", brick_type_id: "brick-5", quantity: 2000, unit_price: 2.10 }
     ]
+  }
+];
+
+export const INITIAL_HORNO_CYCLES: HornoCycle[] = [
+  {
+    id: "cycle-101",
+    folio: "HRN-0205",
+    horno_number: "Horno 1",
+    fecha_ingreso: "2026-10-17",
+    hora_ingreso: "07:30",
+    brick_type_id: "brick-1",
+    cantidad_ingreso: 28000,
+    quemador_id: "emp-3",
+    combustible: "Gas Natural & Aserrín pre-calentado",
+    temperatura_estimada: 940,
+    status: "en_quema",
+    supervisor: "Victor Rodolfo",
+    notes: "Quema uniforme en zona media, curva térmica normal. Cocción a 950°C objetivo.",
+    created_at: "2026-10-17T07:30:00Z"
+  },
+  {
+    id: "cycle-102",
+    folio: "HRN-0204",
+    horno_number: "Horno 2",
+    fecha_ingreso: "2026-10-15",
+    hora_ingreso: "08:00",
+    brick_type_id: "brick-3",
+    cantidad_ingreso: 25000,
+    quemador_id: "emp-3",
+    combustible: "Leña seca seleccionada",
+    temperatura_estimada: 120,
+    status: "enfriando",
+    supervisor: "Victor Rodolfo",
+    notes: "Fase final de enfriamiento controlado. Listo para iniciar deshorne.",
+    created_at: "2026-10-15T08:00:00Z"
+  },
+  {
+    id: "cycle-103",
+    folio: "HRN-0203",
+    horno_number: "Horno 1",
+    fecha_ingreso: "2026-10-12",
+    hora_ingreso: "06:45",
+    brick_type_id: "brick-1",
+    cantidad_ingreso: 30000,
+    quemador_id: "emp-3",
+    combustible: "Gas Natural",
+    temperatura_estimada: 30,
+    status: "finalizado",
+    fecha_salida: "2026-10-16",
+    hora_salida: "16:00",
+    cantidad_salida_primera: 28200,
+    cantidad_salida_segunda: 1200,
+    cantidad_merma: 600,
+    total_salida: 30000,
+    rendimiento_pct: 94.0,
+    merma_pct: 2.0,
+    supervisor: "Victor Rodolfo",
+    notes: "Excelente cocción, color uniforme rojizo estándar. Todo trasladado a bodega y patio.",
+    created_at: "2026-10-12T06:45:00Z"
+  }
+];
+
+export const INITIAL_PATIO_DESPACHOS: PatioDespacho[] = [
+  {
+    id: "patio-101",
+    folio: "PTE-0089",
+    fecha: "2026-10-18",
+    hora_ingreso: "08:15",
+    hora_salida: "09:00",
+    cliente_id: "cust-1",
+    cliente_nombre: "Constructora Fortaleza S.A.",
+    placa_camion: "2489-PLX (Volvo F12 Blanco)",
+    chofer_nombre: "Marco Antonio Vaca",
+    chofer_telefono: "712-44552",
+    tipo_retiro: "cliente_recojo",
+    bahia_carga: "Bahía 1 (Ladrillo 6H)",
+    items: [
+      { brick_type_id: "brick-1", brick_name: "Ladrillo 6H Normal de 1ra", cantidad: 6000 }
+    ],
+    total_unidades: 6000,
+    cuadrilla_estibadores: "Carlos Rivera & equipo de carga",
+    estado: "despachado",
+    encargado_patio: "Darinka Arias",
+    notes: "Carguío completado sin roturas, conteo verificado con el chofer y precinto revisado.",
+    created_at: "2026-10-18T08:15:00Z"
+  },
+  {
+    id: "patio-102",
+    folio: "PTE-0090",
+    fecha: "2026-10-18",
+    hora_ingreso: "10:30",
+    cliente_id: "cust-2",
+    cliente_nombre: "Ferretería El Buen Constructor",
+    placa_camion: "3891-KTR (Nissan Cóndor Azul)",
+    chofer_nombre: "Alex Pandique",
+    chofer_telefono: "770-12890",
+    tipo_retiro: "transporte_planta",
+    bahia_carga: "Bahía 2 (25CM)",
+    items: [
+      { brick_type_id: "brick-3", brick_name: "Ladrillo 6H 25CM de 1ra", cantidad: 4000 },
+      { brick_type_id: "brick-1", brick_name: "Ladrillo 6H Normal de 1ra", cantidad: 2000 }
+    ],
+    total_unidades: 6000,
+    cuadrilla_estibadores: "Carlos Rivera",
+    estado: "en_carguio",
+    encargado_patio: "Darinka Arias",
+    notes: "En proceso de estibado en plataforma lateral del camión.",
+    created_at: "2026-10-18T10:30:00Z"
   }
 ];

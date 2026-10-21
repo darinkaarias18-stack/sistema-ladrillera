@@ -33,6 +33,22 @@ export async function createUserAction(formData: FormData) {
   const full_name = formData.get("full_name") as string
   const position = formData.get("position") as string
   const role = formData.get("role") as string
+  const allowed_modules_raw = formData.get("allowed_modules") as string
+
+  // El rol de Administrador no puede crear un SuperAdmin
+  if (normalizedRole !== "superadmin" && role === "superadmin") {
+    return { error: "Solo un Super Administrador puede crear o asignar el rol de Super Admin." }
+  }
+
+  let allowed_modules: string[] = []
+  try {
+    if (allowed_modules_raw) {
+      allowed_modules = JSON.parse(allowed_modules_raw)
+    }
+  } catch (e) {
+    allowed_modules = []
+  }
+  allowed_modules = allowed_modules.filter((m) => m !== "/admin/usuarios");
 
   if (!email || !password || !full_name || !role) {
     return { error: "Faltan campos obligatorios" }
@@ -43,6 +59,12 @@ export async function createUserAction(formData: FormData) {
     email,
     password,
     email_confirm: true,
+    user_metadata: {
+      role,
+      full_name,
+      position,
+      allowed_modules,
+    }
   })
 
   if (authError) {
@@ -54,24 +76,42 @@ export async function createUserAction(formData: FormData) {
   }
 
   // 3. Create the profile.
-  // Normally the profile is created by a database trigger on auth.users insert.
-  // If the trigger exists, doing an insert here will cause a unique constraint violation.
-  // So we try an upsert or update instead.
-  const { error: profileError } = await adminClient
+  // We attempt with the selected role first; if the database enum doesn't contain it yet,
+  // we fallback to the corresponding base permission role while preserving custom role in user_metadata.
+  let profileError;
+  const { error: initialErr } = await adminClient
     .from("profiles")
     .upsert({
       id: authData.user.id,
       full_name,
       position,
-      role,
+      role: role as any,
       email,
     })
 
+  if (initialErr) {
+    // If enum restriction error, map to base permission role
+    const dbBaseRole = (role === 'cajero' || role === 'entrega_recepcion')
+      ? 'ventas'
+      : role === 'ing_produccion'
+      ? 'produccion'
+      : role;
+
+    const { error: fallbackErr } = await adminClient
+      .from("profiles")
+      .upsert({
+        id: authData.user.id,
+        full_name,
+        position,
+        role: dbBaseRole as any,
+        email,
+      });
+
+    profileError = fallbackErr;
+  }
+
   if (profileError) {
-    // If we can't write to profiles, it might be RLS.
-    // Assuming the admin has RLS privileges or we just return the error.
     console.error("Error creating profile:", profileError)
-    // We don't fail completely, as the auth user was created, but we inform the client.
     return { error: "Usuario creado en Auth, pero error al guardar perfil: " + profileError.message }
   }
 
@@ -147,39 +187,72 @@ export async function updateUserAction(formData: FormData) {
   const position = formData.get("position") as string
   const role = formData.get("role") as string
   const password = formData.get("password") as string // opcional
+  const allowed_modules_raw = formData.get("allowed_modules") as string
+
+  // El rol de Administrador no puede promover a SuperAdmin
+  if (normalizedRole !== "superadmin" && role === "superadmin") {
+    return { error: "Solo un Super Administrador puede asignar el rol de Super Admin." }
+  }
+
+  let allowed_modules: string[] = []
+  try {
+    if (allowed_modules_raw) {
+      allowed_modules = JSON.parse(allowed_modules_raw)
+    }
+  } catch (e) {
+    allowed_modules = []
+  }
+  allowed_modules = allowed_modules.filter((m) => m !== "/admin/usuarios");
 
   if (!targetUserId || !full_name || !role) {
     return { error: "Faltan campos obligatorios" }
   }
 
-  // Actualizar perfil público
-  const { error: profileError } = await adminClient
-    .from("profiles")
-    .update({ full_name, position, role })
-    .eq("id", targetUserId)
-
-  if (profileError) {
-    return { error: "Error al actualizar perfil: " + profileError.message }
+  // Actualizar en Auth (user_metadata y opcionalmente password)
+  const authUpdatePayload: any = {
+    user_metadata: {
+      role,
+      full_name,
+      position,
+      allowed_modules,
+    }
+  };
+  if (password && password.trim() !== "") {
+    authUpdatePayload.password = password;
   }
 
-  // Si envían password, actualizar en Auth
-  if (password && password.trim() !== "") {
-    if (!serviceKey) {
-      return { error: "Perfil actualizado. Pero para cambiar contraseña falta SUPABASE_SERVICE_ROLE_KEY" }
-    }
+  const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(
+    targetUserId,
+    authUpdatePayload
+  );
 
-    const adminAuthClient = createClient(supabaseUrl, serviceKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    })
+  if (updateAuthError) {
+    return { error: "Error al actualizar en Auth: " + updateAuthError.message };
+  }
 
-    const { error: updateAuthError } = await adminAuthClient.auth.admin.updateUserById(
-      targetUserId,
-      { password }
-    )
+  // Actualizar perfil público
+  let { error: profileError } = await adminClient
+    .from("profiles")
+    .update({ full_name, position, role: role as any })
+    .eq("id", targetUserId);
 
-    if (updateAuthError) {
-      return { error: "Perfil actualizado. Pero error en contraseña: " + updateAuthError.message }
-    }
+  if (profileError) {
+    const dbBaseRole = (role === 'cajero' || role === 'entrega_recepcion')
+      ? 'ventas'
+      : role === 'ing_produccion'
+      ? 'produccion'
+      : role;
+
+    const { error: fallbackErr } = await adminClient
+      .from("profiles")
+      .update({ full_name, position, role: dbBaseRole as any })
+      .eq("id", targetUserId);
+
+    profileError = fallbackErr;
+  }
+
+  if (profileError) {
+    return { error: "Error al actualizar perfil: " + profileError.message };
   }
 
   return { success: true }

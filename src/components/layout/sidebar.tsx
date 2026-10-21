@@ -20,12 +20,16 @@ import {
   CalendarDays,
   FileText,
   LogOut,
-  Truck
+  Truck,
+  Warehouse,
+  FlameKindling
 } from "lucide-react";
 import { UserRole } from "@/types/database.types";
 import { useState, useEffect } from "react";
 import { store } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_ROLE_MODULES } from "@/lib/modules-config";
+import { getCurrentUserSession } from "@/actions/auth";
 
 interface SubNavItem {
   name: string;
@@ -46,12 +50,12 @@ const NAV_ITEMS: NavItem[] = [
     name: "Dashboard",
     href: "/",
     icon: LayoutDashboard,
-    allowedRoles: ["superadmin", "admin", "produccion", "ventas"],
+    allowedRoles: ["superadmin", "admin", "cajero", "entrega_recepcion", "ing_produccion", "produccion", "ventas"],
   },
   {
     name: "Empleados",
     icon: Users,
-    allowedRoles: ["superadmin", "admin", "produccion"],
+    allowedRoles: ["superadmin", "admin", "ing_produccion", "produccion"],
     subItems: [
       {
         name: "Nómina",
@@ -78,12 +82,22 @@ const NAV_ITEMS: NavItem[] = [
   {
     name: "Producción",
     icon: Factory,
-    allowedRoles: ["superadmin", "admin", "produccion", "ventas"],
+    allowedRoles: ["superadmin", "admin", "ing_produccion", "entrega_recepcion", "produccion", "ventas"],
     subItems: [
       {
         name: "Vaciados",
         href: "/produccion",
         icon: Flame,
+      },
+      {
+        name: "Ingreso y salida de hornos",
+        href: "/produccion/hornos",
+        icon: FlameKindling,
+      },
+      {
+        name: "Patio de Entregas",
+        href: "/produccion/patio-entregas",
+        icon: Warehouse,
       },
       {
         name: "Inventario",
@@ -100,7 +114,7 @@ const NAV_ITEMS: NavItem[] = [
   {
     name: "Pedidos & Entregas",
     icon: Truck,
-    allowedRoles: ["superadmin", "admin", "ventas"],
+    allowedRoles: ["superadmin", "admin", "cajero", "entrega_recepcion", "ventas"],
     subItems: [
       {
         name: "Clientes",
@@ -123,13 +137,13 @@ const NAV_ITEMS: NavItem[] = [
     name: "Libro de Compra y Venta",
     href: "/caja",
     icon: Wallet,
-    allowedRoles: ["superadmin", "admin", "ventas"],
+    allowedRoles: ["superadmin", "admin", "cajero", "ventas"],
   },
   {
     name: "Reportes",
     href: "/reportes",
     icon: BarChart3,
-    allowedRoles: ["superadmin", "admin", "produccion", "ventas"],
+    allowedRoles: ["superadmin", "admin", "cajero", "entrega_recepcion", "ing_produccion", "produccion", "ventas"],
   },
   {
     name: "Gestión de Usuarios",
@@ -144,6 +158,7 @@ export function Sidebar() {
   const router = useRouter();
   const supabase = createClient();
   const [currentRole, setCurrentRoleState] = useState<UserRole>(store.getCurrentRole());
+  const [allowedModules, setAllowedModules] = useState<string[]>([]);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     Producción: true,
     Empleados: true,
@@ -156,16 +171,19 @@ export function Sidebar() {
 
   useEffect(() => {
     const fetchUserRole = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single();
-        if (data?.role) {
-          handleRoleChange(data.role.toLowerCase() as UserRole);
+      try {
+        const session = await getCurrentUserSession();
+        if (session && session.role) {
+          handleRoleChange(session.role);
+          if (session.role === "superadmin") {
+            // SuperAdmin has full unrestricted access
+            setAllowedModules([]);
+          } else if (session.allowedModules && session.allowedModules.length > 0) {
+            setAllowedModules(session.allowedModules);
+          }
         }
+      } catch (err) {
+        console.error("Error fetching user session role:", err);
       }
     };
     fetchUserRole();
@@ -191,6 +209,17 @@ export function Sidebar() {
     setCurrentRoleState(role);
   };
 
+  const isPathAllowed = (href?: string) => {
+    if (currentRole === "superadmin") return true;
+    if (currentRole === "admin" && href === "/admin/usuarios") return true;
+    if (!href) return true;
+    if (allowedModules.length > 0) {
+      return allowedModules.includes(href);
+    }
+    const defaults = DEFAULT_ROLE_MODULES[currentRole] || [];
+    return defaults.includes(href);
+  };
+
   return (
     <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col justify-between border-r border-slate-800 shadow-xl min-h-screen print:hidden">
       <div>
@@ -211,11 +240,14 @@ export function Sidebar() {
         <nav className="p-3 space-y-1">
           {NAV_ITEMS.map((item) => {
             const isAllowed = item.allowedRoles.includes(currentRole);
-            if (!isAllowed) return null;
+            if (!isAllowed && currentRole !== "superadmin") return null;
 
             // Si es la sección desplegable
             if (item.subItems) {
-              const isActive = item.subItems.some((sub) =>
+              const visibleSubItems = item.subItems.filter((sub) => isPathAllowed(sub.href));
+              if (visibleSubItems.length === 0) return null;
+
+              const isActive = visibleSubItems.some((sub) =>
                 sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas" || sub.href === "/entregas"
                   ? pathname === sub.href
                   : pathname.startsWith(sub.href)
@@ -247,7 +279,7 @@ export function Sidebar() {
                   {/* Sub-items desplegables */}
                   {isOpen && (
                     <div className="pl-4 space-y-1 pt-0.5">
-                      {item.subItems.map((sub) => {
+                      {visibleSubItems.map((sub) => {
                         const isSubActive =
                           sub.href === "/produccion" || sub.href === "/empleados" || sub.href === "/ventas" || sub.href === "/entregas"
                             ? pathname === sub.href
@@ -276,12 +308,14 @@ export function Sidebar() {
             }
 
             // Para items normales (sin subItems)
+            if (item.href && !isPathAllowed(item.href)) return null;
+
             const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href!));
             const Icon = item.icon;
 
             return (
               <Link
-                key={item.href}
+                key={item.name}
                 href={item.href!}
                 className={`flex items-center space-x-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
                   isActive

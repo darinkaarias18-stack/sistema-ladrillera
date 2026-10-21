@@ -6,10 +6,14 @@ import { useEffect, useState } from "react";
 import { store } from "@/lib/store";
 import { UserRole } from "@/types/database.types";
 import { createClient } from "@/lib/supabase/client";
+import { getCurrentUserSession } from "@/actions/auth";
 
 const ROLE_NAMES: Record<UserRole, { label: string; bg: string }> = {
   superadmin: { label: "SuperAdmin", bg: "bg-purple-100 text-purple-800 border-purple-300" },
   admin: { label: "Admin", bg: "bg-blue-100 text-blue-800 border-blue-300" },
+  cajero: { label: "Cajero/Cajera", bg: "bg-emerald-100 text-emerald-800 border-emerald-300" },
+  entrega_recepcion: { label: "Entrega y Recepción", bg: "bg-indigo-100 text-indigo-800 border-indigo-300" },
+  ing_produccion: { label: "Ing. de Producción", bg: "bg-amber-100 text-amber-800 border-amber-300" },
   produccion: { label: "Producción", bg: "bg-amber-100 text-amber-800 border-amber-300" },
   ventas: { label: "Ventas", bg: "bg-emerald-100 text-emerald-800 border-emerald-300" },
 };
@@ -27,25 +31,20 @@ export function Header({ title }: { title: string }) {
   };
 
   useEffect(() => {
-    setRole(store.getCurrentRole());
-
     const fetchUser = async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data } = await supabase
-          .from("profiles")
-          .select("full_name, role")
-          .eq("id", user.id)
-          .single();
-        
-        if (data?.full_name) {
-          setUserName(data.full_name);
-          // Opcional: Podrías actualizar el rol real del usuario aquí también si no quieres usar el simulador
-          // setRole(data.role); 
+      try {
+        const session = await getCurrentUserSession();
+        if (session.user) {
+          setUserName(session.user.fullName || session.user.email);
+          setRole(session.role);
+          store.setCurrentRole(session.role);
         } else {
-          setUserName(user.email || "Usuario Sistema");
+          setUserName("Usuario Sistema");
+          setRole(store.getCurrentRole());
         }
+      } catch (err) {
+        console.error("Error fetching user in header:", err);
+        setRole(store.getCurrentRole());
       }
     };
     

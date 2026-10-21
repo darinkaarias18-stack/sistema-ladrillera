@@ -29,6 +29,8 @@ export async function createEmployeeAction(input: unknown) {
   });
 
   revalidatePath("/empleados");
+  revalidatePath("/admin/usuarios");
+  revalidatePath("/planillas");
   return { success: true, data: newEmp };
 }
 
@@ -40,5 +42,15 @@ export async function updateEmployeeAction(id: string, input: unknown) {
 
   const updated = store.updateEmployee(id, parsed.data as any);
   revalidatePath("/empleados");
+  revalidatePath("/admin/usuarios");
+  revalidatePath("/planillas");
   return { success: true, data: updated };
+}
+
+export async function deleteEmployeeAction(id: string) {
+  const deleted = store.deleteEmployee(id);
+  revalidatePath("/empleados");
+  revalidatePath("/admin/usuarios");
+  revalidatePath("/planillas");
+  return { success: deleted };
 }

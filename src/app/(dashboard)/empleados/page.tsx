@@ -6,7 +6,8 @@ import { DataTablePagination } from "@/components/data-table/data-table-paginati
 import { store } from "@/lib/store";
 import { Employee, ContractType, PayFrequency } from "@/types/database.types";
 import { useEffect, useState } from "react";
-import { Plus, UserCheck, DollarSign, Calendar, FileText, CheckCircle2, X } from "lucide-react";
+import { Plus, UserCheck, DollarSign, Calendar, FileText, CheckCircle2, X, Trash2 } from "lucide-react";
+import { createEmployeeAction, deleteEmployeeAction } from "@/actions/employees";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { employeeSchema, EmployeeInput } from "@/lib/validations/employee.schema";
@@ -52,7 +53,7 @@ export default function EmpleadosPage() {
     loadData();
   }, [search]);
 
-  const onSubmit = (data: EmployeeInput) => {
+  const onSubmit = async (data: EmployeeInput) => {
     store.addEmployee({
       full_name: data.fullName,
       document_id: data.documentId,
@@ -66,9 +67,32 @@ export default function EmpleadosPage() {
       frontier_bonus: data.frontierBonus,
       active: data.active,
     });
+    try {
+      await createEmployeeAction(data);
+    } catch (e) {
+      console.error(e);
+    }
     setIsModalOpen(false);
     reset();
     loadData();
+  };
+
+  const [employeeToDelete, setEmployeeToDelete] = useState<Employee | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!employeeToDelete) return;
+    setIsDeleting(true);
+    store.deleteEmployee(employeeToDelete.id);
+    try {
+      await deleteEmployeeAction(employeeToDelete.id);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeleting(false);
+      setEmployeeToDelete(null);
+      loadData();
+    }
   };
 
   const pageSize = 10;
@@ -94,12 +118,13 @@ export default function EmpleadosPage() {
           <div>
             <h3 className="font-bold text-lg text-orange-200">Modalidades de Trabajo en Fábrica</h3>
             <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-              El personal a <span className="text-orange-400 font-bold">DESTAJO</span> (ej: Maestros Moldeadores) liquida su planilla semanalmente según los millares de ladrillos producidos. El personal <span className="text-orange-400 font-bold">FIJO</span> cobra según Haber Básico mensual + bonos.
+              El personal a <span className="text-orange-400 font-bold">DESTAJO</span> (ej: Maestros Moldeadores) liquida su planilla semanalmente según los ladrillos producidos. El personal <span className="text-orange-400 font-bold">FIJO</span> cobra según Haber Básico mensual + bonos.
             </p>
           </div>
           <button
+            id="btn-registrar-empleado"
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition shadow-md whitespace-nowrap"
+            className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition shadow-md whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Registrar Empleado</span>
@@ -124,6 +149,7 @@ export default function EmpleadosPage() {
                   <th className="p-3.5">Frecuencia Pago</th>
                   <th className="p-3.5 text-right">Sueldo</th>
                   <th className="p-3.5 text-center">Estado</th>
+                  <th className="p-3.5 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -160,7 +186,7 @@ export default function EmpleadosPage() {
                     <td className="p-3.5 text-right font-bold text-slate-900">
                       {emp.contract_type === "destajo" ? (
                         <span className="text-amber-700">
-                          Bs. {emp.rate_per_thousand.toFixed(2)} / millar
+                          Bs. {emp.rate_per_thousand.toFixed(2)}
                         </span>
                       ) : (
                         <span className="text-slate-800">
@@ -176,6 +202,17 @@ export default function EmpleadosPage() {
                       >
                         {emp.active ? "Activo" : "Inactivo"}
                       </span>
+                    </td>
+                    <td className="p-3.5 text-center">
+                      <button
+                        id={`btn-delete-${emp.id}`}
+                        type="button"
+                        onClick={() => setEmployeeToDelete(emp)}
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                        title={`Eliminar a ${emp.full_name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -244,8 +281,8 @@ export default function EmpleadosPage() {
                     {...register("contractType")}
                     className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500"
                   >
-                    <option value="destajo">Destajo (Pago por millar)</option>
-                    <option value="fijo">Fijo (Salario básico)</option>
+                    <option value="destajo">Destajo</option>
+                    <option value="fijo">Fijo</option>
                     <option value="temporal">Temporal</option>
                   </select>
                 </div>
@@ -264,7 +301,7 @@ export default function EmpleadosPage() {
 
                 {contractTypeWatch === "destajo" ? (
                   <div className="col-span-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                    <label className="block text-xs font-bold text-amber-900 mb-1">Tarifa por Millar (Bs.) *</label>
+                    <label className="block text-xs font-bold text-amber-900 mb-1">Tarifa en Bs. *</label>
                     <input
                       {...register("ratePerThousand", { valueAsNumber: true })}
                       type="number"
@@ -273,7 +310,7 @@ export default function EmpleadosPage() {
                       className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white font-bold"
                     />
                     <p className="text-[11px] text-amber-700 mt-1">
-                      El sistema calculará automáticamente la planilla según los millares producidos.
+                      El sistema calculará automáticamente la planilla según la producción realizada.
                     </p>
                   </div>
                 ) : (
@@ -325,6 +362,54 @@ export default function EmpleadosPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmación de Eliminación */}
+      {employeeToDelete && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-red-50">
+              <div className="flex items-center space-x-2 text-red-700 font-bold text-sm">
+                <Trash2 className="w-4 h-4 text-red-600" />
+                <span>Eliminar Empleado de Nómina</span>
+              </div>
+              <button
+                onClick={() => setEmployeeToDelete(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-3">
+              <p className="text-sm text-slate-700">
+                ¿Estás seguro de que deseas eliminar a{" "}
+                <span className="font-bold text-slate-900">{employeeToDelete.full_name}</span>{" "}
+                ({employeeToDelete.position}) de la nómina?
+              </p>
+              <p className="text-xs text-slate-500">
+                Esta acción removerá al empleado inmediatamente de la nómina y de las opciones de usuarios.
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                onClick={() => setEmployeeToDelete(null)}
+                className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium text-xs hover:bg-white transition cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                id="btn-confirm-delete"
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDelete}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold text-xs shadow-sm transition cursor-pointer"
+              >
+                {isDeleting ? "Eliminando..." : "Eliminar Definitivamente"}
+              </button>
+            </div>
           </div>
         </div>
       )}

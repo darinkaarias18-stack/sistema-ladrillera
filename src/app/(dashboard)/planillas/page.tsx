@@ -115,7 +115,7 @@ export default function PlanillasPage() {
             <div>
               <h3 className="font-bold text-slate-800 text-base">Cálculo & Liquidación de Salarios</h3>
               <p className="text-xs text-slate-500">
-                Planillas automatizadas para personal a destajo (por millar) y mensual (salario básico + bonos).
+                Planillas automatizadas para personal a destajo y mensual (salario básico + bonos).
               </p>
             </div>
           </div>
