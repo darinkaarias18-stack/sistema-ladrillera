@@ -62,6 +62,7 @@ class MemoryStore {
 
   constructor() {
     this.initEmployees();
+    this.initPayrollDetails();
   }
 
   private initEmployees() {
@@ -71,11 +72,22 @@ class MemoryStore {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            this.employees = parsed;
+            const legacyIds = new Set(["emp-1", "emp-2", "emp-3", "emp-4", "emp-5"]);
+            const cleaned = parsed.filter((e: Employee) => !legacyIds.has(e.id));
+            const existingIds = new Set(cleaned.map((e: Employee) => e.id));
+            const merged = [...cleaned];
+            for (const emp of INITIAL_EMPLOYEES) {
+              if (!legacyIds.has(emp.id) && !existingIds.has(emp.id)) {
+                merged.push(emp);
+              }
+            }
+            this.employees = merged;
+            localStorage.setItem("erp_employees", JSON.stringify(merged));
+            return;
           }
-        } else {
-          localStorage.setItem("erp_employees", JSON.stringify(this.employees));
         }
+        this.employees = INITIAL_EMPLOYEES.filter(e => !["emp-1", "emp-2", "emp-3", "emp-4", "emp-5"].includes(e.id));
+        localStorage.setItem("erp_employees", JSON.stringify(this.employees));
       } catch (e) {
         console.error("Error reading erp_employees from localStorage", e);
       }
@@ -89,6 +101,46 @@ class MemoryStore {
         window.dispatchEvent(new CustomEvent("erp_employees_updated"));
       } catch (e) {
         console.error("Error writing erp_employees to localStorage", e);
+      }
+    }
+  }
+
+  private initPayrollDetails() {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("erp_payroll_details");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const legacyIds = new Set(["emp-1", "emp-2", "emp-3", "emp-4", "emp-5"]);
+            const cleaned = parsed.filter((pd: PayrollDetail) => !(pd.period_id === "period-oficial" && legacyIds.has(pd.employee_id)));
+            const existingIds = new Set(cleaned.map((pd: PayrollDetail) => pd.id));
+            const merged = [...cleaned];
+            for (const pd of INITIAL_PAYROLL_DETAILS) {
+              if (!existingIds.has(pd.id)) {
+                merged.push(pd);
+              }
+            }
+            this.payrollDetails = merged;
+            localStorage.setItem("erp_payroll_details", JSON.stringify(merged));
+            return;
+          }
+        }
+        this.payrollDetails = [...INITIAL_PAYROLL_DETAILS];
+        localStorage.setItem("erp_payroll_details", JSON.stringify(this.payrollDetails));
+      } catch (e) {
+        console.error("Error reading erp_payroll_details from localStorage", e);
+      }
+    }
+  }
+
+  savePayrollDetailsToStorage() {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("erp_payroll_details", JSON.stringify(this.payrollDetails));
+        window.dispatchEvent(new CustomEvent("erp_payroll_updated"));
+      } catch (e) {
+        console.error("Error writing erp_payroll_details to localStorage", e);
       }
     }
   }
@@ -136,6 +188,42 @@ class MemoryStore {
     };
     this.employees.unshift(newEmp);
     this.saveEmployeesToStorage();
+
+    // Auto-generar detalle de planilla en todos los periodos existentes para que aparezca automáticamente
+    const base = newEmp.base_salary || 2750;
+    const ant = Number(((base * (newEmp.antiquity_bonus_pct || 0)) / 100).toFixed(2));
+    const front = newEmp.frontier_bonus ?? Number((base * 0.20).toFixed(2));
+    const prod = 0;
+    const totalEarned = Number((base + ant + front + prod).toFixed(2));
+    const quincena = Number((totalEarned * 0.50).toFixed(2));
+    const netPay = quincena;
+
+    this.payrollPeriods.forEach((period) => {
+      const exists = this.payrollDetails.some(
+        (pd) => pd.period_id === period.id && pd.employee_id === newEmp.id
+      );
+      if (!exists) {
+        this.payrollDetails.push({
+          id: `pay-${Date.now()}-${newEmp.id}`,
+          period_id: period.id,
+          employee_id: newEmp.id,
+          base_amount: base,
+          antiquity_bonus: ant,
+          frontier_bonus: front,
+          production_bonus: prod,
+          total_earned: totalEarned,
+          deductions: 0,
+          quincena_amount: quincena,
+          mid_period_advance: 0,
+          personal_advances: 0,
+          net_pay: netPay,
+          paid: false,
+          signed: false,
+        });
+      }
+    });
+    this.savePayrollDetailsToStorage();
+
     return newEmp;
   }
 
@@ -144,6 +232,27 @@ class MemoryStore {
     if (idx === -1) return null;
     this.employees[idx] = { ...this.employees[idx], ...updates };
     this.saveEmployeesToStorage();
+
+    if (updates.base_salary !== undefined) {
+      this.payrollDetails.forEach((pd) => {
+        if (pd.employee_id === id) {
+          pd.base_amount = updates.base_salary!;
+          pd.total_earned = Number(
+            (
+              pd.base_amount +
+              (pd.antiquity_bonus || 0) +
+              (pd.frontier_bonus || 0) +
+              (pd.production_bonus || 0) -
+              (pd.deductions || 0)
+            ).toFixed(2)
+          );
+          pd.quincena_amount = Number((pd.total_earned * 0.50).toFixed(2));
+          pd.net_pay = Math.max(0, Number((pd.quincena_amount - (pd.personal_advances || 0)).toFixed(2)));
+        }
+      });
+      this.savePayrollDetailsToStorage();
+    }
+
     return this.employees[idx];
   }
 
@@ -152,6 +261,8 @@ class MemoryStore {
     if (idx === -1) return false;
     this.employees.splice(idx, 1);
     this.saveEmployeesToStorage();
+    this.payrollDetails = this.payrollDetails.filter((pd) => pd.employee_id !== id);
+    this.savePayrollDetailsToStorage();
     return true;
   }
 
@@ -665,45 +776,45 @@ class MemoryStore {
   }
 
   getPayrollDetails(periodId: string) {
+    this.getEmployees();
     const period = this.payrollPeriods.find((p) => p.id === periodId);
     const isWeekly = period?.frequency === "semanal";
 
-    // Asegurar que todos los empleados activos de la nómina estén en la planilla
+    // Asegurar que TODOS los empleados activos de la nómina estén en la planilla
     const activeEmployees = this.employees.filter((e) => e.active);
+    let changed = false;
+
     activeEmployees.forEach((emp) => {
       const exists = this.payrollDetails.some(
         (pd) => pd.period_id === periodId && pd.employee_id === emp.id
       );
       if (!exists) {
-        let base = 0;
-        let antiquity = 0;
-        let frontier = 0;
+        const base = emp.base_salary || 2750;
+        const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
+        const now = new Date();
+        let years = now.getFullYear() - hireDate.getFullYear();
+        const m = now.getMonth() - hireDate.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < hireDate.getDate())) {
+          years--;
+        }
+        years = Math.max(0, years);
+        const antPct = emp.antiquity_bonus_pct !== undefined ? emp.antiquity_bonus_pct : (years >= 2 ? 5 : 0);
+        const antiquity = Number(((base * antPct) / 100).toFixed(2));
+        const frontier = emp.frontier_bonus !== undefined && emp.frontier_bonus !== null ? emp.frontier_bonus : Number((base * 0.20).toFixed(2));
         let prodBonus = 0;
 
         if (emp.contract_type === "destajo") {
-          base = 0;
-          // Calcular bono de producción según vaciados si existen
           const empBatches = this.batches.filter((b) => b.operator_id === emp.id);
           const totalQty = empBatches.reduce((sum, b) => sum + (b.quantity_produced || 0), 0);
           const rate = emp.rate_per_thousand || 150;
           prodBonus = totalQty > 0 ? Number(((totalQty / 1000) * rate).toFixed(2)) : 0;
-        } else {
-          // Personal fijo
-          if (isWeekly && emp.pay_frequency === "mensual") {
-            base = Number((emp.base_salary / 4).toFixed(2));
-            antiquity = Number(((base * (emp.antiquity_bonus_pct || 0)) / 100).toFixed(2));
-            frontier = Number(((emp.frontier_bonus || 0) / 4).toFixed(2));
-          } else {
-            base = emp.base_salary;
-            antiquity = Number(((base * (emp.antiquity_bonus_pct || 0)) / 100).toFixed(2));
-            frontier = emp.frontier_bonus || 0;
-          }
         }
 
         const totalEarned = Number((base + prodBonus + antiquity + frontier).toFixed(2));
-        const advances = 0;
         const deductions = 0;
-        const netPay = Number((totalEarned - deductions - advances).toFixed(2));
+        const quincenaAmount = Number((totalEarned * 0.50).toFixed(2));
+        const advances = 0;
+        const netPay = Number((quincenaAmount - advances).toFixed(2));
 
         const newDetail: PayrollDetail = {
           id: `pay-${Date.now()}-${emp.id}`,
@@ -715,6 +826,7 @@ class MemoryStore {
           production_bonus: prodBonus,
           total_earned: totalEarned,
           deductions: deductions,
+          quincena_amount: quincenaAmount,
           mid_period_advance: 0,
           personal_advances: advances,
           net_pay: netPay,
@@ -722,8 +834,13 @@ class MemoryStore {
           signed: false,
         };
         this.payrollDetails.push(newDetail);
+        changed = true;
       }
     });
+
+    if (changed) {
+      this.savePayrollDetailsToStorage();
+    }
 
     return this.payrollDetails
       .filter((pd) => pd.period_id === periodId)
@@ -732,6 +849,105 @@ class MemoryStore {
         employee: this.employees.find((e) => e.id === pd.employee_id),
       }))
       .filter((pd) => Boolean(pd.employee && pd.employee.active));
+  }
+
+  updatePayrollDetail(detailId: string, updates: Partial<PayrollDetail>) {
+    const pd = this.payrollDetails.find((d) => d.id === detailId);
+    if (!pd) return null;
+
+    Object.assign(pd, updates);
+
+    // Auto-recalculate amounts if components changed
+    if (
+      updates.base_amount !== undefined ||
+      updates.antiquity_bonus !== undefined ||
+      updates.frontier_bonus !== undefined ||
+      updates.production_bonus !== undefined
+    ) {
+      if (updates.total_earned === undefined) {
+        pd.total_earned = Number(
+          (
+            (pd.base_amount || 0) +
+            (pd.antiquity_bonus || 0) +
+            (pd.frontier_bonus || 0) +
+            (pd.production_bonus || 0)
+          ).toFixed(2)
+        );
+      }
+    }
+
+    if (
+      updates.quincena_amount === undefined &&
+      (updates.base_amount !== undefined ||
+        updates.production_bonus !== undefined ||
+        updates.antiquity_bonus !== undefined ||
+        updates.frontier_bonus !== undefined ||
+        updates.deductions !== undefined)
+    ) {
+      pd.quincena_amount = Number((pd.total_earned * 0.5).toFixed(2));
+    }
+
+    if (
+      updates.net_pay === undefined &&
+      (updates.quincena_amount !== undefined ||
+        updates.personal_advances !== undefined ||
+        updates.deductions !== undefined ||
+        updates.base_amount !== undefined)
+    ) {
+      const q = pd.quincena_amount ?? Number((pd.total_earned * 0.5).toFixed(2));
+      pd.net_pay = Math.max(0, Number((q - (pd.personal_advances || 0)).toFixed(2)));
+    }
+
+    this.savePayrollDetailsToStorage();
+    return pd;
+  }
+
+  calculateEmployeeProductionBonus(employeeId: string): number {
+    const emp = this.employees.find((e) => e.id === employeeId);
+    if (!emp) return 0;
+    const empBatches = this.batches.filter((b) => b.operator_id === employeeId);
+    const totalQty = empBatches.reduce((sum, b) => sum + (b.quantity_produced || 0), 0);
+    const rate = emp.rate_per_thousand || 150;
+    return totalQty > 0 ? Number(((totalQty / 1000) * rate).toFixed(2)) : 0;
+  }
+
+  addEmployeeToPayroll(data: {
+    period_id: string;
+    employee_id: string;
+    base_amount: number;
+    antiquity_bonus: number;
+    frontier_bonus: number;
+    production_bonus: number;
+    total_earned: number;
+    deductions: number;
+    quincena_amount: number;
+    personal_advances: number;
+    net_pay: number;
+  }) {
+    let detail = this.payrollDetails.find(
+      (pd) => pd.period_id === data.period_id && pd.employee_id === data.employee_id
+    );
+
+    if (detail) {
+      Object.assign(detail, data);
+    } else {
+      detail = {
+        id: `pay-${Date.now()}-${data.employee_id}`,
+        ...data,
+        mid_period_advance: 0,
+        paid: false,
+        signed: false,
+      };
+      this.payrollDetails.push(detail);
+    }
+
+    this.savePayrollDetailsToStorage();
+    return detail;
+  }
+
+  removeEmployeeFromPayroll(detailId: string) {
+    this.payrollDetails = this.payrollDetails.filter((pd) => pd.id !== detailId);
+    this.savePayrollDetailsToStorage();
   }
 
   addEmployeeAdvance(advance: Omit<EmployeeAdvance, "id" | "created_at">) {
@@ -751,8 +967,9 @@ class MemoryStore {
 
     if (detail) {
       detail.personal_advances += advance.amount;
-      detail.net_pay =
-        detail.total_earned - detail.deductions - detail.mid_period_advance - detail.personal_advances;
+      const q = detail.quincena_amount ?? Number((detail.total_earned * 0.5).toFixed(2));
+      detail.net_pay = Math.max(0, Number((q - detail.personal_advances).toFixed(2)));
+      this.savePayrollDetailsToStorage();
     } else if (advance.period_id) {
       // Si el empleado no estaba en esta planilla, lo agregamos con sus valores base en cero
       const newDetail: PayrollDetail = {
@@ -765,6 +982,7 @@ class MemoryStore {
         frontier_bonus: 0,
         total_earned: 0,
         deductions: 0,
+        quincena_amount: 0,
         mid_period_advance: 0,
         personal_advances: advance.amount,
         net_pay: -advance.amount,
@@ -772,6 +990,7 @@ class MemoryStore {
         signed: false
       };
       this.payrollDetails.push(newDetail);
+      this.savePayrollDetailsToStorage();
     }
 
     // Registrar egreso automático en Caja General
@@ -793,6 +1012,7 @@ class MemoryStore {
     if (pd) {
       pd.paid = true;
       pd.signed = true;
+      this.savePayrollDetailsToStorage();
       const emp = this.employees.find((e) => e.id === pd.employee_id);
 
       // Descontar pago final de planilla en Caja General

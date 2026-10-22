@@ -203,6 +203,7 @@ export interface PayrollDetail {
   production_bonus: number;
   total_earned: number;
   deductions: number;
+  quincena_amount?: number;
   mid_period_advance: number;
   personal_advances: number;
   net_pay: number;
@@ -332,3 +333,33 @@ export interface PatioDespacho {
   notes?: string;
   created_at: string;
 }
+
+export type AuditActionType =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'LOGIN_SUCCESS'
+  | 'LOGIN_FAILED'
+  | 'SECURITY_ALERT'
+  | 'EXPORT_DATA'
+  | 'STOCK_ADJUSTMENT'
+  | 'ROLE_CHANGE';
+
+export type AuditSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  user_id: string;
+  user_name: string;
+  user_email: string;
+  user_role: UserRole;
+  action: AuditActionType;
+  severity: AuditSeverity;
+  module: string;
+  entity_id?: string;
+  description: string;
+  details?: Record<string, any>;
+  ip_address?: string;
+}
+

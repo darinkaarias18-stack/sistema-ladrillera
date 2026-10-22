@@ -27,11 +27,10 @@ export default async function UsuariosPage() {
     .select("role")
     .eq("id", user.id)
     .single()
-  const normalizedRole = profile?.role?.toLowerCase()
+  const normalizedRole = (user.user_metadata?.role || profile?.role || "").toLowerCase()
     
   if (normalizedRole !== "admin" && normalizedRole !== "superadmin") {
-    // If not admin, maybe redirect to a not-authorized page or dashboard
-    // For now we just redirect to dashboard
+    // Si no es admin ni superadmin, redirigir inmediatamente al dashboard principal
     redirect("/")
   }
 

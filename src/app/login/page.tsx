@@ -3,7 +3,17 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, KeyRound, CheckCircle2, Eye, EyeOff } from "lucide-react"
+import { AuditLogger } from "@/lib/audit-logger"
+import {
+  Mail,
+  Lock,
+  ArrowRight,
+  Loader2,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  ShieldCheck
+} from "lucide-react"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -15,60 +25,48 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Reset password state
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false)
-  const [resetEmail, setResetEmail] = useState("")
-  const [resetLoading, setResetLoading] = useState(false)
-  const [resetSuccess, setResetSuccess] = useState(false)
-  const [resetError, setResetError] = useState<string | null>(null)
-
-  const handleLogin = async (e?: React.FormEvent, customEmail?: string, customPass?: string) => {
-    if (e) e.preventDefault()
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
     setLoading(true)
     setError(null)
 
-    const targetEmail = customEmail ?? email
-    const targetPassword = customPass ?? password
-
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: targetEmail,
-        password: targetPassword,
+        email: email.trim(),
+        password: password,
       })
 
       if (error) {
         throw error
+      }
+
+      // Registro de inicio de sesión exitoso en la auditoría inmutable
+      if (data?.user) {
+        AuditLogger.log({
+          user_id: data.user.id,
+          user_name: data.user.user_metadata?.full_name || email,
+          user_email: email,
+          user_role: data.user.user_metadata?.role || "superadmin",
+          action: "LOGIN_SUCCESS",
+          severity: "low",
+          module: "seguridad",
+          description: `Inicio de sesión autenticado correctamente para ${email}`,
+        })
       }
 
       // Refresh router to apply middleware and redirect
       router.push("/")
       router.refresh()
     } catch (err: any) {
-      setError(err.message || "Error al iniciar sesión. Verifica tus credenciales.")
+      // Registro de alerta de seguridad ante fallos de login
+      AuditLogger.logSecurityAlert(
+        "medium",
+        `Intento fallido de inicio de sesión para ${email || "correo no provisto"}`,
+        { email, error: err.message }
+      )
+      setError(err.message || "Credenciales incorrectas. Verifica tu correo y contraseña.")
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleResetPassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setResetLoading(true)
-    setResetError(null)
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/auth/update-password`,
-      })
-
-      if (error) {
-        throw error
-      }
-
-      setResetSuccess(true)
-    } catch (err: any) {
-      setResetError(err.message || "Error al solicitar el restablecimiento.")
-    } finally {
-      setResetLoading(false)
     }
   }
 
@@ -149,7 +147,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors focus:outline-none"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors focus:outline-none cursor-pointer"
                   >
                     {showPassword ? (
                       <EyeOff className="h-5 w-5" />
@@ -165,7 +163,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-orange-500 hover:from-purple-500 hover:to-orange-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 focus:ring-offset-zinc-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25"
+                className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-purple-600 to-orange-500 hover:from-purple-500 hover:to-orange-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 focus:ring-offset-zinc-900 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-purple-500/25 cursor-pointer"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -179,61 +177,18 @@ export default function LoginPage() {
             </div>
           </form>
 
-          {/* Acceso Rápido Local */}
-          <div className="mt-8 pt-6 border-t border-zinc-800/80">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3 text-center">
-              Acceso Rápido Local (1 Clic)
-            </p>
-            <div className="grid grid-cols-1 gap-2.5">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => {
-                  setEmail("darinka.arias18@gmail.com")
-                  setPassword("superadmin1234*")
-                  handleLogin(undefined, "darinka.arias18@gmail.com", "superadmin1234*")
-                }}
-                className="flex items-center justify-between p-3 rounded-xl bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-700/50 hover:border-orange-500/50 transition-all text-left text-xs group cursor-pointer"
-              >
-                <div>
-                  <div className="font-semibold text-white flex items-center gap-1.5">
-                    <span>👑 Superadmin: Darinka Arias</span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-orange-500/20 text-orange-400 font-semibold border border-orange-500/30">
-                      Acceso Total
-                    </span>
-                  </div>
-                  <div className="text-zinc-400 mt-0.5 font-mono">darinka.arias18@gmail.com</div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-orange-400 group-hover:translate-x-0.5 transition-all" />
-              </button>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => {
-                  setEmail("darinkaarias@gmail.com")
-                  setPassword("TemporalPassword2026!")
-                  handleLogin(undefined, "darinkaarias@gmail.com", "TemporalPassword2026!")
-                }}
-                className="flex items-center justify-between p-3 rounded-xl bg-zinc-800/40 hover:bg-zinc-800/80 border border-zinc-700/50 hover:border-purple-500/50 transition-all text-left text-xs group cursor-pointer"
-              >
-                <div>
-                  <div className="font-semibold text-white flex items-center gap-1.5">
-                    <span>👔 Administrador: Fernando Espinoza</span>
-                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-400 font-semibold border border-purple-500/30">
-                      Gerencia
-                    </span>
-                  </div>
-                  <div className="text-zinc-400 mt-0.5 font-mono">darinkaarias@gmail.com</div>
-                </div>
-                <ArrowRight className="w-4 h-4 text-zinc-500 group-hover:text-purple-400 group-hover:translate-x-0.5 transition-all" />
-              </button>
+          {/* Pie de Seguridad Zero Trust */}
+          <div className="mt-8 pt-6 border-t border-zinc-800/80 text-center">
+            <div className="inline-flex items-center justify-center gap-1.5 text-xs text-zinc-400 font-medium">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Autenticación Cifrada • Enfoque Zero Trust</span>
             </div>
+            <p className="text-[11px] text-zinc-600 mt-1">
+              INCEGUA S.R.L. — Acceso Restringido y Auditado
+            </p>
           </div>
         </div>
       </div>
-
-      {/* Modal de recuperar contraseña eliminado según políticas: solo los admins pueden restablecer claves */}
     </div>
   )
 }

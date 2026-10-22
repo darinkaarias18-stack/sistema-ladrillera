@@ -300,47 +300,93 @@ export default function EmpleadosPage() {
                 </div>
 
                 {contractTypeWatch === "destajo" ? (
-                  <div className="col-span-2 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                    <label className="block text-xs font-bold text-amber-900 mb-1">Tarifa en Bs. *</label>
-                    <input
-                      {...register("ratePerThousand", { valueAsNumber: true })}
-                      type="number"
-                      step="0.01"
-                      placeholder="150"
-                      className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white font-bold"
-                    />
-                    <p className="text-[11px] text-amber-700 mt-1">
-                      El sistema calculará automáticamente la planilla según la producción realizada.
+                  <div className="col-span-2 bg-amber-50/70 p-3.5 rounded-xl border border-amber-200 space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-800 mb-1">
+                          Sueldo (Bs.) *
+                        </label>
+                        <input
+                          {...register("baseSalary", {
+                            setValueAs: (v) => (v === "" || isNaN(v) ? 0 : Number(v)),
+                          })}
+                          type="number"
+                          step="0.01"
+                          placeholder="0.00"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white font-semibold focus:ring-2 focus:ring-orange-500"
+                        />
+                        <span className="text-[10px] text-slate-500 block mt-0.5">Sueldo base fijo (opcional 0)</span>
+                        {errors.baseSalary && <p className="text-red-500 text-xs mt-1">{errors.baseSalary.message}</p>}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-amber-900 mb-1">
+                          Tarifa por Millar (Bs.) *
+                        </label>
+                        <input
+                          {...register("ratePerThousand", {
+                            setValueAs: (v) => (v === "" || isNaN(v) ? 0 : Number(v)),
+                          })}
+                          type="number"
+                          step="0.01"
+                          placeholder="150"
+                          className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm bg-white font-bold text-amber-900 focus:ring-2 focus:ring-amber-500"
+                        />
+                        <span className="text-[10px] text-amber-700 block mt-0.5">Pago por cada 1,000 ladrillos</span>
+                        {errors.ratePerThousand && <p className="text-red-500 text-xs mt-1">{errors.ratePerThousand.message}</p>}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-amber-800 bg-amber-100/60 p-2 rounded-lg border border-amber-200">
+                      ℹ️ El contrato al destajo computa el sueldo base más el total producido por millar en planta.
                     </p>
                   </div>
                 ) : (
-                  <div className="col-span-2 bg-slate-50 p-3 rounded-lg border border-slate-200 grid grid-cols-3 gap-3">
+                  <div className="col-span-2 bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Haber Básico (Bs.)</label>
+                      <label className="block text-xs font-bold text-slate-800 mb-1">
+                        Sueldo (Bs.) *
+                      </label>
                       <input
-                        {...register("baseSalary", { valueAsNumber: true })}
+                        {...register("baseSalary", {
+                          setValueAs: (v) => (v === "" || isNaN(v) ? 0 : Number(v)),
+                        })}
                         type="number"
+                        step="0.01"
                         placeholder="3800"
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                        className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm bg-white font-semibold focus:ring-2 focus:ring-orange-500"
                       />
+                      <span className="text-[10px] text-slate-500 block mt-0.5">Sueldo mensual fijo</span>
+                      {errors.baseSalary && <p className="text-red-500 text-xs mt-1">{errors.baseSalary.message}</p>}
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Bono Antigüedad (%)</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Bono Antigüedad (%)
+                      </label>
                       <input
-                        {...register("antiquityBonusPct", { valueAsNumber: true })}
+                        {...register("antiquityBonusPct", {
+                          setValueAs: (v) => (v === "" || isNaN(v) ? 0 : Number(v)),
+                        })}
                         type="number"
+                        step="0.01"
                         placeholder="5"
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                        className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500"
                       />
+                      <span className="text-[10px] text-slate-500 block mt-0.5">% por antigüedad</span>
                     </div>
                     <div>
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Bono Frontera (Bs.)</label>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Bono Frontera (Bs.)
+                      </label>
                       <input
-                        {...register("frontierBonus", { valueAsNumber: true })}
+                        {...register("frontierBonus", {
+                          setValueAs: (v) => (v === "" || isNaN(v) ? 0 : Number(v)),
+                        })}
                         type="number"
+                        step="0.01"
                         placeholder="200"
-                        className="w-full px-2 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                        className="w-full px-2.5 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-orange-500"
                       />
+                      <span className="text-[10px] text-slate-500 block mt-0.5">Monto fijo en Bs.</span>
                     </div>
                   </div>
                 )}

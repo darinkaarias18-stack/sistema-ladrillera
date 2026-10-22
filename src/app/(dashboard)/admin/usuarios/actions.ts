@@ -35,9 +35,26 @@ export async function createUserAction(formData: FormData) {
   const role = formData.get("role") as string
   const allowed_modules_raw = formData.get("allowed_modules") as string
 
-  // El rol de Administrador no puede crear un SuperAdmin
-  if (normalizedRole !== "superadmin" && role === "superadmin") {
-    return { error: "Solo un Super Administrador puede crear o asignar el rol de Super Admin." }
+  // Reglas estrictas: Solo un SuperAdmin y un Admin en el sistema.
+  // Un Administrador logueado no puede crear ni superadmin ni otro admin.
+  if (role === "superadmin") {
+    if (normalizedRole !== "superadmin") {
+      return { error: "Solo un Super Administrador puede crear o asignar el rol de Super Admin." }
+    }
+    const { data: existingSuper } = await adminClient.from("profiles").select("id").eq("role", "superadmin")
+    if (existingSuper && existingSuper.length > 0) {
+      return { error: "Solo puede existir un único Super Administrador en el sistema." }
+    }
+  }
+
+  if (role === "admin") {
+    if (normalizedRole !== "superadmin") {
+      return { error: "Un Administrador no puede crear otros usuarios Administradores. Solo el Super Administrador puede gestionar esta designación." }
+    }
+    const { data: existingAdmin } = await adminClient.from("profiles").select("id").eq("role", "admin")
+    if (existingAdmin && existingAdmin.length > 0) {
+      return { error: "Solo puede existir un único Administrador en el sistema. Ya se encuentra registrado un Administrador de Planta." }
+    }
   }
 
   let allowed_modules: string[] = []
@@ -189,9 +206,33 @@ export async function updateUserAction(formData: FormData) {
   const password = formData.get("password") as string // opcional
   const allowed_modules_raw = formData.get("allowed_modules") as string
 
-  // El rol de Administrador no puede promover a SuperAdmin
-  if (normalizedRole !== "superadmin" && role === "superadmin") {
-    return { error: "Solo un Super Administrador puede asignar el rol de Super Admin." }
+  // Reglas estrictas: Solo un SuperAdmin y un Admin en el sistema.
+  if (role === "superadmin") {
+    if (normalizedRole !== "superadmin") {
+      return { error: "Solo un Super Administrador puede asignar el rol de Super Admin." }
+    }
+    const { data: existingSuper } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("role", "superadmin")
+      .neq("id", targetUserId)
+    if (existingSuper && existingSuper.length > 0) {
+      return { error: "Solo puede existir un único Super Administrador en el sistema." }
+    }
+  }
+
+  if (role === "admin") {
+    if (normalizedRole !== "superadmin" && targetUserId !== user.id) {
+      return { error: "Un Administrador no puede promover usuarios a Administrador. Solo el Super Administrador puede realizar esta designación." }
+    }
+    const { data: existingAdmin } = await adminClient
+      .from("profiles")
+      .select("id")
+      .eq("role", "admin")
+      .neq("id", targetUserId)
+    if (existingAdmin && existingAdmin.length > 0) {
+      return { error: "Solo puede existir un único Administrador en el sistema. Ya se encuentra registrado un Administrador de Planta." }
+    }
   }
 
   let allowed_modules: string[] = []

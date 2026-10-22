@@ -18,7 +18,8 @@ import {
   Trash2,
   RotateCcw,
   CheckSquare,
-  Square
+  Square,
+  ShieldAlert
 } from "lucide-react"
 import {
   SYSTEM_MODULES,
@@ -55,6 +56,21 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const [activeRole, setActiveRole] = useState<string>(
+    currentUserRole || store.getCurrentRole()
+  )
+
+  useEffect(() => {
+    const handleRoleUpdate = (e: any) => {
+      const newRole = e?.detail || store.getCurrentRole();
+      setActiveRole(newRole);
+    };
+    window.addEventListener("erp_role_changed", handleRoleUpdate);
+    return () => {
+      window.removeEventListener("erp_role_changed", handleRoleUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     const refresh = () => {
@@ -272,6 +288,45 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
   }
 
   const totalPossibleModules = getAllModuleHrefs().length
+
+  if (activeRole !== "superadmin" && activeRole !== "admin") {
+    return (
+      <div className="bg-white rounded-2xl border border-red-200 p-8 shadow-sm text-center max-w-lg mx-auto my-12 animate-in fade-in duration-200">
+        <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Acceso Restringido</h2>
+        <p className="text-sm text-slate-600 mb-6">
+          El módulo de <strong>Gestión de Usuarios</strong> está habilitado exclusivamente para 
+          el <span className="font-semibold text-red-600">Super Administrador</span> y el <span className="font-semibold text-orange-600">Administrador de Planta</span>.
+          Tu rol activo actual es <span className="font-mono uppercase bg-slate-100 px-2.5 py-1 rounded text-xs font-bold text-slate-800">{activeRole}</span>.
+        </p>
+        <a
+          href="/"
+          className="inline-flex items-center px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold transition shadow-sm cursor-pointer"
+        >
+          Volver al Dashboard
+        </a>
+      </div>
+    );
+  }
+
+  // Regla Estricta: Solo puede existir un SuperAdmin y un Admin en el sistema.
+  // Un usuario logueado como Admin NUNCA puede crear otro Admin ni un SuperAdmin.
+  const hasSuperAdminAlready = profiles.some(
+    (p) => p.role === "superadmin" && p.id !== editingProfile?.id
+  );
+  const hasAdminAlready = profiles.some(
+    (p) => p.role === "admin" && p.id !== editingProfile?.id
+  );
+
+  const canSelectSuperAdmin =
+    activeRole === "superadmin" &&
+    (!hasSuperAdminAlready || editingProfile?.role === "superadmin");
+
+  const canSelectAdmin =
+    activeRole === "superadmin" &&
+    (!hasAdminAlready || editingProfile?.role === "admin");
 
   return (
     <div className="space-y-6">
@@ -552,11 +607,14 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                       onChange={handleRoleChange}
                       className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white cursor-pointer"
                     >
-                      {/* El rol de SuperAdmin SOLO se muestra si quien está logueado es SuperAdmin */}
-                      {currentUserRole === "superadmin" && (
+                      {/* El rol de SuperAdmin SOLO se muestra si quien está logueado es SuperAdmin y no existe otro */}
+                      {canSelectSuperAdmin && (
                         <option value="superadmin">Super Administrador (Control Total)</option>
                       )}
-                      <option value="admin">Administrador (Admin)</option>
+                      {/* El rol de Admin SOLO se muestra si quien está logueado es SuperAdmin y no existe otro Admin */}
+                      {canSelectAdmin && (
+                        <option value="admin">Administrador (Admin)</option>
+                      )}
                       <option value="cajero">Cajero/Cajera</option>
                       <option value="entrega_recepcion">Entrega y Recepción</option>
                       <option value="ing_produccion">Ing. de Producción</option>
@@ -565,7 +623,9 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                     </select>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
-                    Al seleccionar un rol, se cargarán automáticamente sus módulos recomendados. Puedes personalizarlos abajo.
+                    {activeRole === "admin"
+                      ? "⚠️ Como Administrador de Planta solo puedes registrar y gestionar roles operativos. La creación de nuevos administradores está restringida."
+                      : "Al seleccionar un rol, se cargarán automáticamente sus módulos recomendados. El sistema permite un único SuperAdmin y un único Admin de Planta."}
                   </p>
                 </div>
 

@@ -29,6 +29,7 @@ import { useState, useEffect } from "react";
 import { store } from "@/lib/store";
 import { createClient } from "@/lib/supabase/client";
 import { DEFAULT_ROLE_MODULES } from "@/lib/modules-config";
+import { canAccessRoute } from "@/lib/role-validator";
 import { getCurrentUserSession } from "@/actions/auth";
 
 interface SubNavItem {
@@ -151,6 +152,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: ShieldCheck,
     allowedRoles: ["superadmin", "admin"],
   },
+  {
+    name: "Logs de Auditoría",
+    href: "/admin/auditoria",
+    icon: FileText,
+    allowedRoles: ["superadmin"],
+  },
 ];
 
 export function Sidebar() {
@@ -207,17 +214,20 @@ export function Sidebar() {
   const handleRoleChange = (role: UserRole) => {
     store.setCurrentRole(role);
     setCurrentRoleState(role);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_role_changed", { detail: role }));
+    }
+    // Si está en /admin/auditoria y no es superadmin, redirigir al dashboard
+    if (pathname.startsWith("/admin/auditoria") && role !== "superadmin") {
+      router.push("/");
+    } else if (pathname.startsWith("/admin") && role !== "superadmin" && role !== "admin") {
+      router.push("/");
+    }
   };
 
   const isPathAllowed = (href?: string) => {
-    if (currentRole === "superadmin") return true;
-    if (currentRole === "admin" && href === "/admin/usuarios") return true;
     if (!href) return true;
-    if (allowedModules.length > 0) {
-      return allowedModules.includes(href);
-    }
-    const defaults = DEFAULT_ROLE_MODULES[currentRole] || [];
-    return defaults.includes(href);
+    return canAccessRoute(currentRole, href, allowedModules);
   };
 
   return (
@@ -343,8 +353,11 @@ export function Sidebar() {
           className="w-full bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-2 focus:ring-2 focus:ring-orange-500 focus:outline-none"
         >
           <option value="superadmin">👑 SuperAdmin (Todo)</option>
-          <option value="admin">🏢 Admin (Operativo)</option>
-          <option value="produccion">🏗️ Producción</option>
+          <option value="admin">🏢 Admin de Planta</option>
+          <option value="ing_produccion">📐 Ing. de Producción</option>
+          <option value="produccion">🏗️ Producción (Operario)</option>
+          <option value="entrega_recepcion">🚚 Entrega y Despacho</option>
+          <option value="cajero">💰 Cajero / Tesorería</option>
           <option value="ventas">📈 Ventas</option>
         </select>
       </div>

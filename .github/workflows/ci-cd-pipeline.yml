@@ -1,0 +1,38 @@
+name: INCEGUA ERP - CI/CD Pipeline & Code Quality Gate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    name: Verificación Estricta de Calidad, Tipos y Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout del Repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Instalar Dependencias
+        run: npm ci
+
+      - name: Auditoría de Tipos TypeScript (Strict Mode)
+        run: npx tsc --noEmit
+
+      - name: Análisis Estático con ESLint
+        run: npm run lint
+
+      - name: Verificación de Build en Modo Producción
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://dummy-project.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key' }}

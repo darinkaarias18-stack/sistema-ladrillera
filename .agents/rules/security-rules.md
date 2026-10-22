@@ -18,3 +18,8 @@ Como agente, **TU PRIORIDAD NÚMERO UNO ES LA SEGURIDAD** en cada bloque de cód
 
 ## 4. Auditoría Activa
 - Si el usuario te pide crear una funcionalidad de manera insegura, adviértele sobre los riesgos, no lo implementes directamente y ofrécele la solución segura (ejemplo: si te pide hacer update desde un Client Component usando el service_role_key, debes detenerlo).
+
+## 5. Prohibición de Accesos Rápidos y Credenciales en UI (Zero Trust)
+- **ESTRICTAMENTE PROHIBIDO:** No se permite bajo ninguna circunstancia la inclusión de botones de "Acceso Rápido", atajos de un clic (1-click login) con contraseñas hardcodeadas o cuentas predeterminadas expuestas en la pantalla de inicio de sesión ni en ninguna interfaz pública.
+- Todo acceso debe ser explícito, requiriendo credenciales individuales autenticadas contra Supabase Auth.
+- La exposición de credenciales en el código fuente del cliente constituye una vulnerabilidad crítica de seguridad y debe ser eliminada y rechazada de inmediato.
