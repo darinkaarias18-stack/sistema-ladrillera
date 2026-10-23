@@ -6,8 +6,11 @@ import { DataTablePagination } from "@/components/data-table/data-table-paginati
 import { store } from "@/lib/store";
 import { Customer, CityDiscount } from "@/types/database.types";
 import { useEffect, useState } from "react";
-import { Plus, Users, X, Phone, MapPin, Percent, Settings2, CheckCircle2, Tag, Building2, Trash2 } from "lucide-react";
+import { Plus, Users, X, Phone, MapPin, Percent, Settings2, CheckCircle2, Tag, Building2, Trash2, Pencil } from "lucide-react";
 import { useForm } from "react-hook-form";
+import { createClient } from "@/lib/supabase/client";
+import { canEditOrDelete } from "@/lib/role-validator";
+import { getCurrentUserSession } from "@/actions/auth";
 
 interface CustomerInput {
   name: string;
@@ -24,6 +27,8 @@ export default function ClientesPage() {
   const [page, setPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDiscountModalOpen, setIsDiscountModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("superadmin");
 
   // Formulario de nuevo/editar descuento por ciudad
   const [discountForm, setDiscountForm] = useState({
@@ -75,17 +80,111 @@ export default function ClientesPage() {
 
   useEffect(() => {
     loadData();
+
+    const fetchRole = async () => {
+      try {
+        const session = await getCurrentUserSession();
+        if (session && session.role) {
+          setCurrentUserRole(session.role);
+        } else {
+          setCurrentUserRole(store.getCurrentRole());
+        }
+      } catch (e) {
+        setCurrentUserRole(store.getCurrentRole());
+      }
+    };
+    fetchRole();
+
+    const handleRoleChanged = (e: any) => {
+      const newRole = e?.detail || store.getCurrentRole();
+      setCurrentUserRole(newRole);
+    };
+
+    window.addEventListener("erp_role_changed", handleRoleChanged);
+    return () => {
+      window.removeEventListener("erp_role_changed", handleRoleChanged);
+    };
   }, [search]);
 
-  const onSubmit = (data: CustomerInput) => {
-    store.addCustomer({
-      name: data.name,
-      phone: data.phone,
-      address: data.address,
-      city: data.city || "Santa Cruz",
-      department: data.department || "Santa Cruz",
+  const allowEditOrDelete = canEditOrDelete(currentUserRole);
+
+  const openCreateModal = () => {
+    setEditingCustomer(null);
+    reset({
+      name: "",
+      phone: "",
+      address: "",
+      city: "Santa Cruz",
+      department: "Santa Cruz",
     });
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = (cust: Customer) => {
+    if (!allowEditOrDelete) return;
+    setEditingCustomer(cust);
+    setValue("name", cust.name);
+    setValue("phone", cust.phone || "");
+    setValue("address", cust.address || "");
+    setValue("city", cust.city || "Santa Cruz");
+    setValue("department", cust.department || "Santa Cruz");
+    setIsModalOpen(true);
+  };
+
+  const handleDeleteCustomer = async (cust: Customer) => {
+    if (!allowEditOrDelete) return;
+    if (window.confirm(`¿Estás seguro de eliminar al cliente "${cust.name}"? Esta acción no se puede deshacer.`)) {
+      store.deleteCustomer(cust.id);
+      try {
+        const supabase = createClient();
+        await supabase.from("customers").delete().or(`name.eq.${cust.name},id.eq.${cust.id}`);
+      } catch (err) {
+        console.error("Error al sincronizar eliminación con Supabase:", err);
+      }
+      loadData();
+    }
+  };
+
+  const onSubmit = async (data: CustomerInput) => {
+    if (editingCustomer) {
+      store.updateCustomer(editingCustomer.id, {
+        name: data.name,
+        phone: data.phone,
+        address: data.address,
+        city: data.city || "Santa Cruz",
+        department: data.department || "Santa Cruz",
+      });
+      try {
+        const supabase = createClient();
+        await supabase.from("customers").update({
+          name: data.name,
+          phone: data.phone,
+          address: `${data.address || ""}${data.city ? `, ${data.city}` : ""}`.trim()
+        }).or(`name.eq.${editingCustomer.name},id.eq.${editingCustomer.id}`);
+      } catch (err) {
+        console.error("Error al actualizar cliente en Supabase:", err);
+      }
+    } else {
+      store.addCustomer({
+        name: data.name,
+        phone: data.phone,
+        address: data.address,
+        city: data.city || "Santa Cruz",
+        department: data.department || "Santa Cruz",
+      });
+      try {
+        const supabase = createClient();
+        await supabase.from("customers").insert({
+          name: data.name,
+          phone: data.phone,
+          address: `${data.address || ""}${data.city ? `, ${data.city}` : ""}`.trim()
+        });
+      } catch (err) {
+        console.error("Error al insertar cliente en Supabase:", err);
+      }
+    }
     setIsModalOpen(false);
+    setEditingCustomer(null);
     reset({
       name: "",
       phone: "",
@@ -148,7 +247,7 @@ export default function ClientesPage() {
             </button>
 
             <button
-              onClick={() => setIsModalOpen(true)}
+              onClick={openCreateModal}
               className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-lg font-semibold text-xs transition shadow-md whitespace-nowrap cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -171,13 +270,15 @@ export default function ClientesPage() {
                   <th className="p-3.5">Teléfono / Celular</th>
                   <th className="p-3.5">Dirección</th>
                   <th className="p-3.5">Ciudad</th>
-                  <th className="p-3.5">Fecha de Registro</th>
+                  {allowEditOrDelete && (
+                    <th className="p-3.5 text-right">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {paginated.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-slate-400">
+                    <td colSpan={allowEditOrDelete ? 5 : 4} className="p-8 text-center text-slate-400">
                       No se encontraron clientes.
                     </td>
                   </tr>
@@ -233,9 +334,26 @@ export default function ClientesPage() {
                             )}
                           </div>
                         </td>
-                        <td className="p-3.5 text-slate-500">
-                          {cust.created_at ? new Date(cust.created_at).toLocaleDateString("es-BO") : "N/A"}
-                        </td>
+                        {allowEditOrDelete && (
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              <button
+                                onClick={() => openEditModal(cust)}
+                                className="p-1.5 text-slate-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition-colors cursor-pointer"
+                                title="Editar Cliente"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCustomer(cust)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                title="Eliminar Cliente"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   })
@@ -260,7 +378,9 @@ export default function ClientesPage() {
             <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
               <div className="flex items-center space-x-2">
                 <Users className="w-5 h-5 text-orange-600" />
-                <h3 className="font-bold text-slate-800">Registrar Nuevo Cliente</h3>
+                <h3 className="font-bold text-slate-800">
+                  {editingCustomer ? "Editar Datos del Cliente" : "Registrar Nuevo Cliente"}
+                </h3>
               </div>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -363,9 +483,9 @@ export default function ClientesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm"
+                  className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm cursor-pointer"
                 >
-                  Guardar Cliente
+                  {editingCustomer ? "Guardar Cambios" : "Guardar Cliente"}
                 </button>
               </div>
             </form>
@@ -477,29 +597,31 @@ export default function ClientesPage() {
                         )}
                       </div>
 
-                      <div className="flex items-center space-x-1">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDiscountForm({
-                              city: cd.city,
-                              discount_percentage: cd.discount_percentage,
-                              description: cd.description || "",
-                            });
-                          }}
-                          className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded text-[11px] font-semibold"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDiscount(cd.id)}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      {allowEditOrDelete && (
+                        <div className="flex items-center space-x-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDiscountForm({
+                                city: cd.city,
+                                discount_percentage: cd.discount_percentage,
+                                description: cd.description || "",
+                              });
+                            }}
+                            className="px-2 py-1 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded text-[11px] font-semibold"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDiscount(cd.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                            title="Eliminar"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

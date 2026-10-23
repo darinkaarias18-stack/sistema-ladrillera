@@ -4,11 +4,16 @@ import { Header } from "@/components/layout/header";
 import { store } from "@/lib/store";
 import { ProductionBatch, BrickType, Employee } from "@/types/database.types";
 import React, { useEffect, useState, useRef, Fragment } from "react";
-import { Factory, Plus, Flame, CheckCircle, Calendar, Layers, Layers3, RefreshCw, X, Printer, FileText, FileSpreadsheet, Filter, PackageCheck, FlaskConical, ChevronDown, ChevronRight, Hash, Clock, User } from "lucide-react";
+import { Factory, Plus, Flame, CheckCircle, Calendar, Layers, Layers3, RefreshCw, X, Printer, FileText, FileSpreadsheet, Filter, PackageCheck, FlaskConical, ChevronDown, ChevronRight, Hash, Clock, User, Trash2, AlertTriangle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { productionBatchSchema, ProductionBatchInput } from "@/lib/validations/production.schema";
 import { getTodayDateString } from "@/lib/dates";
+import { createClient } from "@/lib/supabase/client";
+import { AuditLogger } from "@/lib/audit-logger";
+import { supabaseSync } from "@/lib/supabase-sync";
+import { canEditOrDelete } from "@/lib/role-validator";
+import { getCurrentUserSession } from "@/actions/auth";
 
 function parseInsumos(notes?: string) {
   if (!notes) {
@@ -55,6 +60,10 @@ export default function ProduccionPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [batchToDelete, setBatchToDelete] = useState<ProductionBatch | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("superadmin");
 
   // Estado para controlar la fila expandida por número de vaciado / fecha
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
@@ -127,7 +136,98 @@ export default function ProduccionPage() {
 
   useEffect(() => {
     loadData();
+
+    const fetchRole = async () => {
+      try {
+        const session = await getCurrentUserSession();
+        if (session && session.role) {
+          setCurrentUserRole(session.role);
+        } else {
+          setCurrentUserRole(store.getCurrentRole());
+        }
+      } catch (e) {
+        setCurrentUserRole(store.getCurrentRole());
+      }
+    };
+    fetchRole();
+
+    const handleRoleChanged = (e: any) => {
+      const newRole = e?.detail || store.getCurrentRole();
+      setCurrentUserRole(newRole);
+    };
+
+    const handleBatchesUpdated = () => {
+      loadData();
+    };
+    window.addEventListener("erp_batches_updated", handleBatchesUpdated);
+    window.addEventListener("erp_role_changed", handleRoleChanged);
+    return () => {
+      window.removeEventListener("erp_batches_updated", handleBatchesUpdated);
+      window.removeEventListener("erp_role_changed", handleRoleChanged);
+    };
   }, []);
+
+  const allowEditOrDelete = canEditOrDelete(currentUserRole);
+
+  const openDeleteConfirmation = (batch: ProductionBatch) => {
+    if (!allowEditOrDelete) return;
+    setBatchToDelete(batch);
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDeleteBatch = async () => {
+    if (!batchToDelete || !allowEditOrDelete) return;
+    setIsDeleting(true);
+
+    const batch = batchToDelete;
+    const brickName = batch.brick_type?.name || "Ladrillo";
+    const qty = batch.quantity_produced?.toLocaleString() || "0";
+    const fecha = batch.production_date;
+    const horno = batch.horno || "Horno 1";
+    const folio = batch.folio_number ? ` (Form: ${batch.folio_number.replace("FOL-", "")})` : "";
+
+    // 1. Eliminar de la memoria local y localStorage
+    store.deleteProductionBatch(batch.id);
+
+    // 2. Registro explícito de auditoría inmutable
+    AuditLogger.log({
+      action: "DELETE",
+      severity: "high",
+      module: "produccion",
+      entity_id: batch.id,
+      description: `Eliminación de vaciado de producción: ${qty} unid. de ${brickName} en ${horno} (Fecha: ${fecha})${folio}`,
+      details: {
+        batch_id: batch.id,
+        folio_number: batch.folio_number,
+        horno: batch.horno,
+        production_date: batch.production_date,
+        brick_type: brickName,
+        brick_type_id: batch.brick_type_id,
+        quantity_produced: batch.quantity_produced,
+        operator: batch.operator?.full_name,
+        shift: batch.shift,
+        notes: batch.notes,
+        deleted_at: new Date().toISOString()
+      }
+    });
+
+    // 3. Forzar sincronización de eliminación a Supabase
+    try {
+      await supabaseSync.pushChange("production_batches", "delete", undefined, batch.id);
+    } catch (err) {
+      console.error("Error al sincronizar eliminación con Supabase:", err);
+    }
+
+    // 4. Recargar datos en la UI y cerrar modal
+    loadData();
+    setIsDeleting(false);
+    setIsDeleteModalOpen(false);
+    setBatchToDelete(null);
+  };
+
+  const handleDeleteBatch = (batch: ProductionBatch) => {
+    openDeleteConfirmation(batch);
+  };
 
   useEffect(() => {
     if (isBatchModalOpen && firstInputRef.current) {
@@ -407,12 +507,15 @@ export default function ProduccionPage() {
                   <th className="p-3.5 text-right">Cantidad Producida</th>
                   <th className="p-3.5">Insumos & Observaciones</th>
                   <th className="p-3.5 text-right bg-orange-100/70 text-orange-950 font-extrabold">Total Vaciado Jornada</th>
+                  {allowEditOrDelete && (
+                    <th className="p-3.5 text-center text-slate-500 font-semibold uppercase w-16">Acción</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-6 text-center text-slate-400">
+                    <td colSpan={allowEditOrDelete ? 11 : 10} className="p-6 text-center text-slate-400">
                       No se encontraron vaciados registrados con los filtros seleccionados.
                     </td>
                   </tr>
@@ -520,12 +623,28 @@ export default function ProduccionPage() {
                               <span className="text-[10px] font-semibold text-orange-800">unid.</span>
                             </span>
                           </td>
+                          {allowEditOrDelete && (
+                            <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openDeleteConfirmation(b);
+                                }}
+                                className="px-2.5 py-1 text-xs font-semibold text-red-600 hover:text-white hover:bg-red-600 bg-red-50 rounded-lg transition-all border border-red-200 hover:border-red-600 cursor-pointer inline-flex items-center space-x-1 shadow-xs"
+                                title="Eliminar este registro de vaciado y registrar en auditoría"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Eliminar</span>
+                              </button>
+                            </td>
+                          )}
                         </tr>
 
                         {/* Panel Acordeón Desplegable con Detalle por Número de Vaciado */}
                         {isExpanded && (
                           <tr className="bg-slate-950 text-white animate-in fade-in zoom-in-95 duration-150">
-                            <td colSpan={10} className="p-4 md:p-5 bg-slate-900 border-y-2 border-orange-500 shadow-inner">
+                            <td colSpan={allowEditOrDelete ? 11 : 10} className="p-4 md:p-5 bg-slate-900 border-y-2 border-orange-500 shadow-inner">
                               <div className="space-y-4">
                                 {/* Encabezado del Panel de Desglose */}
                                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
@@ -593,6 +712,21 @@ export default function ProduccionPage() {
                                             <span className="font-mono font-black text-orange-400 text-sm bg-slate-950 px-3 py-1 rounded-lg border border-slate-700">
                                               {gItem.total_quantity.toLocaleString()} <span className="text-xs font-normal text-slate-400">unid.</span>
                                             </span>
+                                            {allowEditOrDelete && (
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  const targetBatch = batches.find((b) => b.id === gItem.id) || gItem;
+                                                  openDeleteConfirmation(targetBatch);
+                                                }}
+                                                className="px-2.5 py-1 text-xs font-semibold text-red-400 hover:text-white hover:bg-red-600 bg-red-950/60 rounded-lg border border-red-800/80 transition-all cursor-pointer inline-flex items-center space-x-1"
+                                                title="Eliminar este vaciado y registrar en auditoría"
+                                              >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                                <span>Eliminar</span>
+                                              </button>
+                                            )}
                                           </div>
                                         </div>
 
@@ -1233,6 +1367,89 @@ export default function ProduccionPage() {
                 className="px-4 py-1.5 bg-slate-800 text-white font-semibold rounded-lg text-xs cursor-pointer"
               >
                 Cerrar Vista Previa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación de Eliminación con Auditoría Inmutable */}
+      {isDeleteModalOpen && batchToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-red-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            {/* Header del modal */}
+            <div className="p-6 bg-red-50 border-b border-red-100 flex items-start space-x-4">
+              <div className="w-12 h-12 rounded-full bg-red-100 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Confirmar Eliminación de Vaciado</h3>
+                <p className="text-xs text-red-700 mt-1 font-medium">
+                  Esta acción eliminará el vaciado permanentemente y quedará registrada en el sistema de auditoría.
+                </p>
+              </div>
+            </div>
+
+            {/* Detalles del vaciado a eliminar */}
+            <div className="p-6 space-y-4 text-xs text-slate-700">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Fecha:</span>
+                  <span className="font-bold text-slate-900 font-mono">{batchToDelete.production_date}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Horno:</span>
+                  <span className="font-bold text-orange-700">{batchToDelete.horno || "Horno 1"}</span>
+                </div>
+                {batchToDelete.folio_number && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500 font-medium">N° Formulario:</span>
+                    <span className="font-bold text-slate-800 font-mono">{batchToDelete.folio_number.replace("FOL-", "")}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Tipo de Ladrillo:</span>
+                  <span className="font-bold text-slate-900">{batchToDelete.brick_type?.name || "Ladrillo"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Cantidad Producida:</span>
+                  <span className="font-bold text-red-700 font-mono text-sm">
+                    {batchToDelete.quantity_produced?.toLocaleString()} unid.
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-medium">Responsable:</span>
+                  <span className="font-semibold text-slate-800">{batchToDelete.operator?.full_name || "Angel"}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-[11px] flex items-center space-x-2">
+                <span className="font-bold">🛡️ Auditoría:</span>
+                <span>Se registrará un evento inmutable con severidad ALTA vinculado a tu usuario actual.</span>
+              </div>
+            </div>
+
+            {/* Acciones */}
+            <div className="px-6 py-4 bg-slate-100 border-t border-slate-200 flex items-center justify-end space-x-3">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => {
+                  setIsDeleteModalOpen(false);
+                  setBatchToDelete(null);
+                }}
+                className="px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmDeleteBatch}
+                className="px-4 py-2 text-xs font-bold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors shadow-sm inline-flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeleting ? "Eliminando..." : "Sí, Eliminar Registro"}</span>
               </button>
             </div>
           </div>

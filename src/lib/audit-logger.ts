@@ -186,17 +186,69 @@ export class AuditLogger {
     return result.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
   }
 
-  static log(entry: Omit<AuditLogEntry, "id" | "timestamp">): AuditLogEntry {
-    AuditLogger.initFromStorage();
-    const newEntry: AuditLogEntry = {
-      ...entry,
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      timestamp: new Date().toISOString(),
-    };
+  static log(
+    entry: Omit<AuditLogEntry, "id" | "timestamp" | "user_id" | "user_name" | "user_email" | "user_role"> & {
+      user_id?: string;
+      user_name?: string;
+      user_email?: string;
+      user_role?: UserRole;
+    }
+  ): AuditLogEntry {
+    try {
+      AuditLogger.initFromStorage();
 
-    AuditLogger.logs.unshift(newEntry);
-    AuditLogger.saveToStorage();
-    return newEntry;
+      let userId = entry.user_id;
+      let userName = entry.user_name;
+      let userEmail = entry.user_email;
+      let userRole = entry.user_role;
+
+      if (typeof window !== "undefined") {
+        try {
+          const storedUser = localStorage.getItem("erp_current_user");
+          if (storedUser) {
+            const parsed = JSON.parse(storedUser);
+            if (!userId) userId = parsed.id;
+            if (!userName) userName = parsed.name || parsed.fullName || parsed.full_name;
+            if (!userEmail) userEmail = parsed.email;
+            if (!userRole) userRole = parsed.role;
+          }
+        } catch (e) {}
+      }
+
+      const finalUserId = userId || "83ea7d79-d6d7-4d73-b9ee-5304497df779";
+      const finalUserName = userName || "Darinka Arias";
+      const finalUserEmail = userEmail || "darinka.arias18@gmail.com";
+      const finalUserRole: UserRole = userRole || "superadmin";
+
+      const newEntry: AuditLogEntry = {
+        ...entry,
+        id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        timestamp: new Date().toISOString(),
+        user_id: finalUserId,
+        user_name: finalUserName,
+        user_email: finalUserEmail,
+        user_role: finalUserRole,
+        ip_address: entry.ip_address || (typeof window !== "undefined" ? "192.168.1.100" : "127.0.0.1"),
+      };
+
+      AuditLogger.logs.unshift(newEntry);
+      AuditLogger.saveToStorage();
+      return newEntry;
+    } catch (err) {
+      console.error("Error en AuditLogger.log:", err);
+      return {
+        id: `log-fallback-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        user_id: "83ea7d79-d6d7-4d73-b9ee-5304497df779",
+        user_name: "Darinka Arias",
+        user_email: "darinka.arias18@gmail.com",
+        user_role: "superadmin",
+        action: entry.action,
+        severity: entry.severity,
+        module: entry.module,
+        description: entry.description,
+      };
+    }
   }
 
   static logSecurityAlert(

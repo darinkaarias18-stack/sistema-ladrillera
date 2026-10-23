@@ -57,7 +57,9 @@ const MODULE_ICONS: Record<string, any> = {
   produccion: Flame,
   inventario: Boxes,
   empleados: UsersIcon,
+  nomina: Wallet,
   ventas: Wallet,
+  patio_despacho: Boxes,
 }
 
 export function AuditoriaClient({ initialLogs, currentUserRole }: AuditoriaClientProps) {
@@ -72,6 +74,9 @@ export function AuditoriaClient({ initialLogs, currentUserRole }: AuditoriaClien
   const [activeRole, setActiveRole] = useState<string>(currentUserRole || store.getCurrentRole())
 
   useEffect(() => {
+    // Sincronizar inmediatamente con los logs persistidos en el cliente
+    setLogs(AuditLogger.getLogs())
+
     const handleRoleUpdate = (e: any) => {
       const newRole = e?.detail || store.getCurrentRole()
       setActiveRole(newRole)
@@ -113,8 +118,8 @@ export function AuditoriaClient({ initialLogs, currentUserRole }: AuditoriaClien
   // KPIs
   const totalEvents = logs.length
   const criticalCount = logs.filter((l) => l.severity === "critical" || l.action === "SECURITY_ALERT").length
-  const cashEvents = logs.filter((l) => l.module === "caja").length
-  const productionEvents = logs.filter((l) => l.module.startsWith("produccion") || l.module === "inventario").length
+  const cashEvents = logs.filter((l) => l.module === "caja" || l.module === "nomina").length
+  const productionEvents = logs.filter((l) => l.module.startsWith("produccion") || l.module === "inventario" || l.module === "patio_despacho").length
 
   const handleExportCSV = () => {
     const csvContent = AuditLogger.exportToCSV()
@@ -270,10 +275,13 @@ export function AuditoriaClient({ initialLogs, currentUserRole }: AuditoriaClien
               <option value="seguridad">Seguridad & Cortafuegos</option>
               <option value="usuarios">Gestión de Usuarios</option>
               <option value="caja">Libro de Caja y Cobros</option>
-              <option value="produccion_hornos">Producción & Hornos</option>
-              <option value="inventario">Inventario & Patio</option>
-              <option value="empleados">Empleados & Nómina</option>
-              <option value="ventas">Ventas & Pedidos</option>
+              <option value="produccion">Producción & Vaciados</option>
+              <option value="produccion_hornos">Hornos & Quemas</option>
+              <option value="patio_despacho">Patio de Entregas & Despachos</option>
+              <option value="inventario">Inventario & Stock</option>
+              <option value="empleados">Empleados & Asistencia</option>
+              <option value="nomina">Nómina, Planillas & Anticipos</option>
+              <option value="ventas">Ventas, Pedidos & Clientes</option>
             </select>
           </div>
 

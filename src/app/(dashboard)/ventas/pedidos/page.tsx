@@ -6,7 +6,7 @@ import { DataTablePagination } from "@/components/data-table/data-table-paginati
 import { store } from "@/lib/store";
 import { Order, Customer, BrickType, InventoryStock, Employee, DeliveryType } from "@/types/database.types";
 import { useEffect, useState, useMemo } from "react";
-import { Plus, X, PackageOpen, Calendar, MapPin, AlertCircle, Printer, Trash2, Phone, Percent } from "lucide-react";
+import { Plus, X, PackageOpen, Calendar, MapPin, AlertCircle, Printer, Trash2, Phone, Percent, MessageCircle } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 
 interface OrderInput {
@@ -172,43 +172,9 @@ export default function PedidosPage() {
       }))
     });
     
-    // Generar mensaje de WhatsApp
+    // Notificación automática a WhatsApp oficial (+591 69370911)
     if (customer) {
-      let msg = `*NUEVO PEDIDO REGISTRADO*\n\n`;
-      msg += `*Cliente:* ${customer.name}\n`;
-      if (customerCity) {
-        msg += `*Ciudad:* ${customerCity}\n`;
-      }
-      if (data.contactPhone) {
-        msg += `*Teléfono:* ${data.contactPhone}\n`;
-      }
-      msg += `*Detalle:*\n`;
-      cartItems.forEach(item => {
-        msg += `- ${item.quantity} un. ${item.name} (Bs. ${item.unitPrice})\n`;
-      });
-      if (discountPct > 0) {
-        msg += `\n*Subtotal:* Bs. ${subtotal.toFixed(2)}\n`;
-        msg += `*Descuento Ciudad (${customerCity} - ${discountPct}%):* -Bs. ${discountAmount.toFixed(2)}\n`;
-        msg += `*Total Final:* Bs. ${totalAmount.toFixed(2)}\n`;
-      } else {
-        msg += `\n*Total:* Bs. ${totalAmount.toFixed(2)}\n`;
-      }
-      msg += `*Fecha estimada:* ${new Date(data.deliveryDate).toLocaleDateString("es-BO")}\n`;
-      let delivTypeStr = "Puesto en Fábrica";
-      if (data.deliveryType === 'obra' || data.deliveryType === 'envio') delivTypeStr = "Puesto en Obra";
-      else if (data.deliveryType === 'exportacion') delivTypeStr = "Exportación";
-      msg += `*Tipo de entrega:* ${delivTypeStr}\n`;
-      if (data.deliveryAddress) {
-        msg += `*Dirección:* ${data.deliveryAddress}\n`;
-      }
-      if (data.notes) {
-        msg += `*Notas:* ${data.notes}\n`;
-      }
-
-      // Enviar siempre al número especificado por el usuario
-      const phone = "59170673385";
-      const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
-      window.open(waUrl, '_blank');
+      sendOrderWhatsApp(newOrder, customer.name, customerCity);
     }
 
     setReceiptOrder(newOrder);
@@ -242,6 +208,69 @@ export default function PedidosPage() {
     setValue("brickTypeId", "");
     setValue("quantity", 0);
     setValue("unitPrice", 0);
+  };
+
+  const sendOrderWhatsApp = (order: Order, customerName?: string, customerCity?: string) => {
+    const cust = customers.find((c) => c.id === order.customer_id);
+    const cName = customerName || cust?.name || "Cliente";
+    const cCity = customerCity || order.city || cust?.city || "Santa Cruz";
+
+    let msg = `*NUEVO PEDIDO REGISTRADO (#${order.id.slice(-6).toUpperCase()})*\n\n`;
+    msg += `*Cliente:* ${cName}\n`;
+    if (cCity) {
+      msg += `*Ciudad:* ${cCity}\n`;
+    }
+    if (order.contact_phone) {
+      msg += `*Teléfono Contacto:* ${order.contact_phone}\n`;
+    }
+    msg += `\n*Detalle de Productos:*\n`;
+    (order.items || []).forEach((item) => {
+      const bName =
+        item.brick_type?.name ||
+        brickTypes.find((b) => b.id === item.brick_type_id)?.name ||
+        "Ladrillo";
+      msg += `- ${item.quantity.toLocaleString()} un. ${bName} (Bs. ${item.unit_price})\n`;
+    });
+
+    const subtotal =
+      order.subtotal !== undefined
+        ? order.subtotal
+        : (order.items || []).reduce((acc, i) => acc + i.quantity * i.unit_price, 0);
+    const discountPct = order.city_discount_pct || 0;
+    const discountAmount = order.city_discount_amount || 0;
+    const total =
+      order.total_amount !== undefined
+        ? order.total_amount
+        : Math.max(0, subtotal - discountAmount);
+
+    if (discountPct > 0) {
+      msg += `\n*Subtotal:* Bs. ${subtotal.toLocaleString("es-BO", { minimumFractionDigits: 2 })}\n`;
+      msg += `*Descuento Ciudad (${cCity} - ${discountPct}%):* -Bs. ${discountAmount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}\n`;
+      msg += `*Total Final:* Bs. ${total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}\n`;
+    } else {
+      msg += `\n*Total a Pagar:* Bs. ${total.toLocaleString("es-BO", { minimumFractionDigits: 2 })}\n`;
+    }
+
+    if (order.delivery_date) {
+      msg += `*Fecha estimada entrega:* ${new Date(order.delivery_date).toLocaleDateString("es-BO")}\n`;
+    }
+
+    let delivTypeStr = "Puesto en Fábrica";
+    if (order.delivery_type === "obra" || order.delivery_type === "envio") delivTypeStr = "Puesto en Obra";
+    else if (order.delivery_type === "exportacion") delivTypeStr = "Exportación";
+    msg += `*Tipo de entrega:* ${delivTypeStr}\n`;
+
+    if (order.delivery_address) {
+      msg += `*Dirección de Entrega:* ${order.delivery_address}\n`;
+    }
+    if (order.notes) {
+      msg += `*Notas:* ${order.notes}\n`;
+    }
+
+    // Número oficial de WhatsApp especificado por el usuario (+591 69370911)
+    const phone = "59169370911";
+    const waUrl = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+    window.open(waUrl, "_blank");
   };
 
   const handleRemoveItem = (id: string) => {
@@ -444,7 +473,14 @@ export default function PedidosPage() {
                           </select>
                         </td>
                         <td className="p-3.5 text-center">
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => sendOrderWhatsApp(order)}
+                              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 p-2 rounded-lg transition-colors shadow-2xs flex items-center justify-center"
+                              title="Enviar Pedido por WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </button>
                             <button
                               onClick={() => setReceiptOrder(order)}
                               className="bg-slate-100 hover:bg-slate-200 text-slate-600 p-2 rounded-lg transition-colors shadow-sm flex items-center justify-center"
@@ -554,7 +590,7 @@ export default function PedidosPage() {
                     <input
                       {...register("contactPhone")}
                       type="tel"
-                      placeholder="Ej. 70673385"
+                      placeholder="Ej. 70000000"
                       className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 bg-white"
                     />
                   </div>
@@ -752,21 +788,27 @@ export default function PedidosPage() {
                 </div>
               </div>
 
-              {/* Footer Fijo con botones de acción */}
-              <div className="px-6 py-3.5 border-t border-slate-200 flex items-center justify-end space-x-3 bg-slate-50 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => { setIsModalOpen(false); setCartItems([]); reset(); }}
-                  className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm transition"
-                >
-                  Confirmar Pedido
-                </button>
+              {/* Footer Fijo con botones de acción e indicador de WhatsApp */}
+              <div className="px-6 py-3.5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 shrink-0">
+                <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-300">
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Notificación automática por WhatsApp</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => { setIsModalOpen(false); setCartItems([]); reset(); }}
+                    className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium transition"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm transition flex items-center gap-2"
+                  >
+                    <span>Confirmar Pedido</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -942,19 +984,28 @@ export default function PedidosPage() {
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-200 flex justify-end space-x-3 bg-slate-50 shrink-0 print:hidden">
+            <div className="px-6 py-4 border-t border-slate-200 flex items-center justify-between bg-slate-50 shrink-0 print:hidden">
               <button
-                onClick={() => setReceiptOrder(null)}
-                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium"
+                onClick={() => sendOrderWhatsApp(receiptOrder)}
+                className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-lg shadow-sm flex items-center gap-1.5 transition"
               >
-                Cerrar
+                <MessageCircle className="w-4 h-4" />
+                <span>Enviar por WhatsApp</span>
               </button>
-              <button
-                onClick={() => window.print()}
-                className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm flex items-center gap-2"
-              >
-                Imprimir Recibo
-              </button>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => setReceiptOrder(null)}
+                  className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium"
+                >
+                  Cerrar
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm flex items-center gap-2"
+                >
+                  Imprimir Recibo
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -175,6 +175,11 @@ export function canAccessRoute(
     return role === "admin";
   }
 
+  // Admin tiene acceso a todos los módulos operativos del sistema (excepto /admin/auditoria verificado arriba)
+  if (role === "admin") {
+    return true;
+  }
+
   // Si tiene lista personalizada de módulos permitidos
   if (customAllowedModules && customAllowedModules.length > 0) {
     return customAllowedModules.some((modulePath) => {
@@ -189,6 +194,26 @@ export function canAccessRoute(
     if (modulePath === "/") return pathname === "/";
     return pathname.startsWith(modulePath);
   });
+}
+
+/**
+ * REGLA ESTRICTA DE PERMISOS DE EDICIÓN Y ELIMINACIÓN:
+ * - SuperAdmin y Admin: Tienen plenas facultades para EDITAR y ELIMINAR registros en los módulos.
+ * - Otros Roles (cajero, ventas, produccion, ing_produccion, entrega_recepcion, etc.):
+ *   NO tienen permisos para editar ni eliminar en ningún módulo.
+ */
+export function canEditOrDelete(role?: UserRole | string | null): boolean {
+  if (!role) return false;
+  const normalized = role.toLowerCase();
+  return normalized === "superadmin" || normalized === "admin";
+}
+
+/**
+ * Validador de acceso exclusivo a los Logs de Auditoría (Solo SuperAdmin)
+ */
+export function canAccessAuditLogs(role?: UserRole | string | null): boolean {
+  if (!role) return false;
+  return role.toLowerCase() === "superadmin";
 }
 
 /**

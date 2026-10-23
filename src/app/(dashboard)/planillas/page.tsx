@@ -22,12 +22,15 @@ import {
   Lock,
   Info
 } from "lucide-react";
+import { canEditOrDelete } from "@/lib/role-validator";
+import { getCurrentUserSession } from "@/actions/auth";
 
 export default function PlanillasPage() {
   const [periods, setPeriods] = useState<PayrollPeriod[]>([]);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>("");
   const [payrollDetails, setPayrollDetails] = useState<PayrollDetail[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("superadmin");
 
   // Modals state
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
@@ -90,16 +93,39 @@ export default function PlanillasPage() {
   useEffect(() => {
     loadData();
 
+    const fetchRole = async () => {
+      try {
+        const session = await getCurrentUserSession();
+        if (session && session.role) {
+          setCurrentUserRole(session.role);
+        } else {
+          setCurrentUserRole(store.getCurrentRole());
+        }
+      } catch (e) {
+        setCurrentUserRole(store.getCurrentRole());
+      }
+    };
+    fetchRole();
+
+    const handleRoleChanged = (e: any) => {
+      const newRole = e?.detail || store.getCurrentRole();
+      setCurrentUserRole(newRole);
+    };
+
     const handleUpdate = () => {
       loadData();
     };
     window.addEventListener("erp_payroll_updated", handleUpdate);
     window.addEventListener("erp_employees_updated", handleUpdate);
+    window.addEventListener("erp_role_changed", handleRoleChanged);
     return () => {
       window.removeEventListener("erp_payroll_updated", handleUpdate);
       window.removeEventListener("erp_employees_updated", handleUpdate);
+      window.removeEventListener("erp_role_changed", handleRoleChanged);
     };
   }, [selectedPeriodId]);
+
+  const allowEditOrDelete = canEditOrDelete(currentUserRole);
 
   const activePeriod = periods.find((p) => p.id === selectedPeriodId);
 
@@ -192,6 +218,7 @@ export default function PlanillasPage() {
     field: "base_amount" | "production_bonus" | "deductions" | "personal_advances", 
     rawValue: string
   ) => {
+    if (!allowEditOrDelete) return;
     const num = rawValue === "" ? 0 : parseFloat(rawValue);
     const validNum = isNaN(num) ? 0 : num;
 
@@ -323,6 +350,7 @@ export default function PlanillasPage() {
 
   // Abrir modal de edición para una fila: Haber Básico, Bono de Producción, Descuentos y Anticipos
   const openEditRow = (pd: PayrollDetail) => {
+    if (!allowEditOrDelete) return;
     setEditingDetail(pd);
     setEditForm({
       base_amount: pd.base_amount || 0,
@@ -368,6 +396,7 @@ export default function PlanillasPage() {
   };
 
   const handleRemoveEmployee = (detailId: string, empName?: string) => {
+    if (!allowEditOrDelete) return;
     if (!confirm(`¿Desea retirar a "${empName || 'este empleado'}" de esta planilla?`)) return;
     store.removeEmployeeFromPayroll(detailId);
     loadData();
@@ -556,7 +585,7 @@ export default function PlanillasPage() {
                   <th className="py-2.5 px-3 text-center border border-slate-700 min-w-24">FIRMA</th>
                   {/* OPCION PARA EDITAR AL LADO DE CADA FILA (STICKY A LA DERECHA) */}
                   <th className="py-2.5 px-3 text-center border border-slate-700 min-w-32 bg-slate-900 sticky right-0 z-20 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.3)] print:hidden">
-                    OPCIÓN EDITAR
+                    {allowEditOrDelete ? "OPCIÓN EDITAR" : "ACCIONES"}
                   </th>
                 </tr>
               </thead>
@@ -600,16 +629,20 @@ export default function PlanillasPage() {
                         {/* 5. HABER BASICO (Editable directamente) */}
                         <td className="py-1 px-1.5 text-right border border-slate-300 font-mono text-slate-800">
                           <div className="print:hidden flex items-center justify-end">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={pd.base_amount === 0 ? "" : pd.base_amount}
-                              placeholder="0.00"
-                              onChange={(e) => handleInlineChange(pd.id, "base_amount", e.target.value)}
-                              className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-orange-500 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-orange-500 text-slate-800 transition"
-                              title="Haga clic para editar Haber Básico"
-                            />
+                            {allowEditOrDelete ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={pd.base_amount === 0 ? "" : pd.base_amount}
+                                placeholder="0.00"
+                                onChange={(e) => handleInlineChange(pd.id, "base_amount", e.target.value)}
+                                className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-orange-500 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-orange-500 text-slate-800 transition"
+                                title="Haga clic para editar Haber Básico"
+                              />
+                            ) : (
+                              <span className="font-mono text-xs text-slate-800">{formatMoney(pd.base_amount)}</span>
+                            )}
                           </div>
                           <span className="hidden print:inline">{formatMoney(pd.base_amount)}</span>
                         </td>
@@ -627,16 +660,20 @@ export default function PlanillasPage() {
                         {/* 8. BONO DE PRODUCCION (Campo Editable Directamente en la Celda) */}
                         <td className="py-1 px-1.5 text-right border border-slate-300 font-mono text-slate-800">
                           <div className="print:hidden flex items-center justify-end">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={pd.production_bonus === 0 ? "" : pd.production_bonus}
-                              placeholder="0.00"
-                              onChange={(e) => handleInlineChange(pd.id, "production_bonus", e.target.value)}
-                              className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-orange-500 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-orange-500 text-slate-800 transition font-semibold"
-                              title="Haga clic para editar Bono de Producción"
-                            />
+                            {allowEditOrDelete ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={pd.production_bonus === 0 ? "" : pd.production_bonus}
+                                placeholder="0.00"
+                                onChange={(e) => handleInlineChange(pd.id, "production_bonus", e.target.value)}
+                                className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-orange-500 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-orange-500 text-slate-800 transition font-semibold"
+                                title="Haga clic para editar Bono de Producción"
+                              />
+                            ) : (
+                              <span className="font-mono text-xs text-slate-800">{formatMoney(pd.production_bonus)}</span>
+                            )}
                           </div>
                           <span className="hidden print:inline">{formatMoney(pd.production_bonus)}</span>
                         </td>
@@ -649,16 +686,20 @@ export default function PlanillasPage() {
                         {/* 10. DESCUENTOS (Campo Editable Directamente en la Celda) */}
                         <td className="py-1 px-1.5 text-right border border-slate-300 font-mono text-red-600 bg-red-50/15">
                           <div className="print:hidden flex items-center justify-end">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={pd.deductions === 0 ? "" : pd.deductions}
-                              placeholder="-"
-                              onChange={(e) => handleInlineChange(pd.id, "deductions", e.target.value)}
-                              className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-red-400 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-red-400 text-red-600 transition"
-                              title="Haga clic para editar Descuentos"
-                            />
+                            {allowEditOrDelete ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={pd.deductions === 0 ? "" : pd.deductions}
+                                placeholder="-"
+                                onChange={(e) => handleInlineChange(pd.id, "deductions", e.target.value)}
+                                className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-red-400 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-red-400 text-red-600 transition"
+                                title="Haga clic para editar Descuentos"
+                              />
+                            ) : (
+                              <span className="font-mono text-xs text-red-600">{formatMoney(pd.deductions)}</span>
+                            )}
                           </div>
                           <span className="hidden print:inline">{formatMoney(pd.deductions)}</span>
                         </td>
@@ -671,16 +712,20 @@ export default function PlanillasPage() {
                         {/* 12. ANTICIPOS (Campo Editable Directamente en la Celda) */}
                         <td className="py-1 px-1.5 text-right border border-slate-300 font-mono text-amber-700 bg-amber-50/15">
                           <div className="print:hidden flex items-center justify-end">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={pd.personal_advances === 0 ? "" : pd.personal_advances}
-                              placeholder="-"
-                              onChange={(e) => handleInlineChange(pd.id, "personal_advances", e.target.value)}
-                              className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-amber-500 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-amber-500 text-amber-700 transition"
-                              title="Haga clic para editar Anticipos"
-                            />
+                            {allowEditOrDelete ? (
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={pd.personal_advances === 0 ? "" : pd.personal_advances}
+                                placeholder="-"
+                                onChange={(e) => handleInlineChange(pd.id, "personal_advances", e.target.value)}
+                                className="w-20 text-right bg-transparent hover:bg-white focus:bg-white focus:ring-1 focus:ring-amber-500 font-mono text-xs px-1.5 py-0.5 rounded border border-transparent hover:border-slate-300 focus:border-amber-500 text-amber-700 transition"
+                                title="Haga clic para editar Anticipos"
+                              />
+                            ) : (
+                              <span className="font-mono text-xs text-amber-700">{formatMoney(pd.personal_advances)}</span>
+                            )}
                           </div>
                           <span className="hidden print:inline">{formatMoney(pd.personal_advances)}</span>
                         </td>
@@ -711,14 +756,16 @@ export default function PlanillasPage() {
                         {/* 15. OPCION PARA EDITAR AL LADO DE CADA FILA (STICKY DERECHA) */}
                         <td className="py-1.5 px-3 text-center border border-slate-300 sticky right-0 bg-white group-hover:bg-orange-50/40 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.1)] print:hidden whitespace-nowrap">
                           <div className="flex items-center justify-center space-x-1.5">
-                            <button
-                              onClick={() => openEditRow(pd)}
-                              className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer focus:ring-2 focus:ring-orange-500"
-                              title="Editar Haber Básico, Descuentos y Anticipos"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                              <span>Editar</span>
-                            </button>
+                            {allowEditOrDelete && (
+                              <button
+                                onClick={() => openEditRow(pd)}
+                                className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 active:bg-orange-700 text-white font-bold text-xs rounded-lg shadow-xs transition cursor-pointer focus:ring-2 focus:ring-orange-500"
+                                title="Editar Haber Básico, Descuentos y Anticipos"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                                <span>Editar</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => setReceiptDetail(pd)}
                               className="p-1.5 hover:bg-slate-100 text-slate-500 hover:text-slate-800 rounded-md transition cursor-pointer"
@@ -726,13 +773,15 @@ export default function PlanillasPage() {
                             >
                               <Printer className="w-3.5 h-3.5" />
                             </button>
-                            <button
-                              onClick={() => handleRemoveEmployee(pd.id, pd.employee?.full_name)}
-                              className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-md transition cursor-pointer"
-                              title="Retirar de esta planilla"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {allowEditOrDelete && (
+                              <button
+                                onClick={() => handleRemoveEmployee(pd.id, pd.employee?.full_name)}
+                                className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded-md transition cursor-pointer"
+                                title="Retirar de esta planilla"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>

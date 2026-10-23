@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Profile, UserRole, Employee } from "@/types/database.types"
 import { store } from "@/lib/store"
 import { createUserAction, deleteUserAction, updateUserAction } from "./actions"
+import { AuditLogger } from "@/lib/audit-logger"
 import {
   Plus,
   Search,
@@ -19,8 +20,10 @@ import {
   RotateCcw,
   CheckSquare,
   Square,
-  ShieldAlert
+  ShieldAlert,
+  ShieldCheck
 } from "lucide-react"
+import { getCurrentUserSession } from "@/actions/auth"
 import {
   SYSTEM_MODULES,
   DEFAULT_ROLE_MODULES,
@@ -58,10 +61,22 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
   const [error, setError] = useState<string | null>(null)
 
   const [activeRole, setActiveRole] = useState<string>(
-    currentUserRole || store.getCurrentRole()
+    currentUserRole?.toLowerCase() === "superadmin" ? "superadmin" : (currentUserRole || store.getCurrentRole())
   )
 
   useEffect(() => {
+    const fetchUserRole = async () => {
+      try {
+        const session = await getCurrentUserSession();
+        if (session && session.role) {
+          setActiveRole(session.role);
+        }
+      } catch (err) {
+        console.error("Error fetching session role:", err);
+      }
+    };
+    fetchUserRole();
+
     const handleRoleUpdate = (e: any) => {
       const newRole = e?.detail || store.getCurrentRole();
       setActiveRole(newRole);
@@ -123,6 +138,28 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
       if (result.error) {
         setError(result.error)
       } else {
+        if (editingProfile) {
+          const prevRole = editingProfile.role;
+          const newRole = formData.get("role") as string;
+          AuditLogger.log({
+            action: prevRole !== newRole ? "ROLE_CHANGE" : "UPDATE",
+            severity: prevRole !== newRole ? "critical" : "high",
+            module: "usuarios",
+            description: `Modificación de usuario: ${finalFullName} (${editingProfile.email}). Rol: "${newRole}"`,
+            entity_id: editingProfile.id,
+            details: { previous_role: prevRole, new_role: newRole, full_name: finalFullName, position: finalPosition }
+          });
+        } else {
+          AuditLogger.log({
+            action: "CREATE",
+            severity: "high",
+            module: "usuarios",
+            description: `Creación de nuevo usuario: ${finalFullName} (${formData.get("email")}) con rol "${formData.get("role")}"`,
+            entity_id: formData.get("email") as string,
+            details: { full_name: finalFullName, email: formData.get("email"), role: formData.get("role"), position: finalPosition }
+          });
+        }
+
         setIsModalOpen(false)
         setEditingProfile(null)
         window.location.reload()
@@ -134,8 +171,8 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("¿Estás seguro de que deseas eliminar este usuario definitivamente?")) return;
+  const handleDelete = async (id: string, name?: string) => {
+    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario "${name || id}"? Esta acción no se puede deshacer.`)) return;
     
     setIsDeleting(id)
     try {
@@ -143,6 +180,13 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
       if (result.error) {
         alert(result.error)
       } else {
+        AuditLogger.log({
+          action: "DELETE",
+          severity: "critical",
+          module: "usuarios",
+          description: `Eliminación permanente de usuario "${name || id}"`,
+          entity_id: id,
+        });
         window.location.reload()
       }
     } catch (err) {
@@ -311,22 +355,10 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     );
   }
 
-  // Regla Estricta: Solo puede existir un SuperAdmin y un Admin en el sistema.
-  // Un usuario logueado como Admin NUNCA puede crear otro Admin ni un SuperAdmin.
-  const hasSuperAdminAlready = profiles.some(
-    (p) => p.role === "superadmin" && p.id !== editingProfile?.id
-  );
-  const hasAdminAlready = profiles.some(
-    (p) => p.role === "admin" && p.id !== editingProfile?.id
-  );
+  const isSuperAdmin = activeRole === "superadmin" || currentUserRole === "superadmin";
 
-  const canSelectSuperAdmin =
-    activeRole === "superadmin" &&
-    (!hasSuperAdminAlready || editingProfile?.role === "superadmin");
-
-  const canSelectAdmin =
-    activeRole === "superadmin" &&
-    (!hasAdminAlready || editingProfile?.role === "admin");
+  const canSelectSuperAdmin = isSuperAdmin;
+  const canSelectAdmin = isSuperAdmin || activeRole === "admin";
 
   return (
     <div className="space-y-6">
@@ -440,24 +472,56 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                         )}
                       </td>
                       <td className="p-4 text-right">
-                        <div className="flex justify-end gap-2">
-                          <button 
-                            onClick={() => openEditModal(profile)}
-                            disabled={profile.role === 'superadmin' && currentUserRole !== 'superadmin'}
-                            className={`transition-colors p-1.5 rounded-md ${profile.role === 'superadmin' && currentUserRole !== 'superadmin' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-orange-600 hover:bg-orange-50 cursor-pointer'}`}
-                            title={profile.role === 'superadmin' && currentUserRole !== 'superadmin' ? "Solo los SuperAdmins pueden editar a otro SuperAdmin" : "Editar Usuario y Módulos"}
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(profile.id)}
-                            disabled={isDeleting === profile.id || profile.role === 'superadmin'}
-                            className={`transition-colors p-1.5 rounded-md ${profile.role === 'superadmin' ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50 cursor-pointer'}`}
-                            title={profile.role === 'superadmin' ? "Nadie puede eliminar a un Super Administrador" : "Eliminar Usuario"}
-                          >
-                            {isDeleting === profile.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                          </button>
-                        </div>
+                        {(() => {
+                          const isMasterAccount = 
+                            profile.email?.toLowerCase() === "darinka.arias18@gmail.com" || 
+                            profile.id === "83ea7d79-d6d7-4d73-b9ee-5304497df779";
+                          const canEditThisUser = isSuperAdmin || (activeRole === "admin" && profile.role !== "superadmin");
+                          const canDeleteThisUser = isSuperAdmin 
+                            ? !isMasterAccount 
+                            : (activeRole === "admin" && profile.role !== "superadmin" && profile.role !== "admin");
+
+                          return (
+                            <div className="flex items-center justify-end gap-2">
+                              {/* Botón EDITAR: SuperAdmin tiene acceso absoluto para editar cualquier usuario */}
+                              {canEditThisUser && (
+                                <button 
+                                  onClick={() => openEditModal(profile)}
+                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 hover:border-orange-300 rounded-lg transition-all shadow-xs cursor-pointer"
+                                  title={`Editar datos, rol y módulos de ${profile.full_name || profile.email}`}
+                                >
+                                  <Pencil className="w-3.5 h-3.5 text-orange-600" />
+                                  <span>Editar</span>
+                                </button>
+                              )}
+
+                              {/* Indicador de Cuenta Vitalicia o Botón de Eliminar */}
+                              {isMasterAccount ? (
+                                <span
+                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg shadow-xs cursor-help"
+                                  title="Cuenta Propietaria de SuperAdmin (Inmutable y Vitalicia)"
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                                  <span>Vitalicio</span>
+                                </span>
+                              ) : canDeleteThisUser ? (
+                                <button 
+                                  onClick={() => handleDelete(profile.id, profile.full_name || profile.email)}
+                                  disabled={isDeleting === profile.id}
+                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-lg transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                  title={`Eliminar usuario ${profile.full_name || profile.email}`}
+                                >
+                                  {isDeleting === profile.id ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Eliminar</span>
+                                </button>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   )
@@ -508,30 +572,36 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                       Nombre Completo *
                     </label>
 
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <UserPlus className="h-4 w-4 text-slate-400" />
+                    <div className="space-y-1.5">
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <UserPlus className="h-4 w-4 text-slate-400" />
+                        </div>
+                        <input
+                          name="full_name"
+                          type="text"
+                          value={fullNameValue}
+                          onChange={(e) => setFullNameValue(e.target.value)}
+                          required
+                          className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white"
+                          placeholder="Nombre y Apellidos"
+                        />
                       </div>
-                      <select
-                        id="select-nomina-empleados"
-                        value={selectedEmployeeId}
-                        onFocus={() => {
-                          setEmployeeList(store.getEmployees().filter((e) => e.active))
-                        }}
-                        onChange={handleEmployeeChange}
-                        required
-                        className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white cursor-pointer"
-                      >
-                        <option value="">-- Seleccionar de Nómina de Empleados --</option>
-                        {editingProfile && editingProfile.full_name && !employeeList.some(emp => emp.id === selectedEmployeeId || emp.full_name.toLowerCase() === editingProfile.full_name?.toLowerCase()) && (
-                          <option value="current">{editingProfile.full_name} ({editingProfile.position || "Actual"})</option>
-                        )}
-                        {employeeList.map((emp) => (
-                          <option key={emp.id} value={emp.id}>
-                            {emp.full_name} — {emp.position}
-                          </option>
-                        ))}
-                      </select>
+                      {employeeList.length > 0 && (
+                        <select
+                          id="select-nomina-empleados"
+                          value={selectedEmployeeId}
+                          onChange={handleEmployeeChange}
+                          className="block w-full py-1.5 px-2.5 border border-slate-200 rounded-lg text-xs bg-slate-50 text-slate-600 cursor-pointer"
+                        >
+                          <option value="">-- O seleccionar de Nómina de Empleados --</option>
+                          {employeeList.map((emp) => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.full_name} — {emp.position}
+                            </option>
+                          ))}
+                        </select>
+                      )}
                     </div>
                   </div>
 
@@ -624,8 +694,8 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
                     {activeRole === "admin"
-                      ? "⚠️ Como Administrador de Planta solo puedes registrar y gestionar roles operativos. La creación de nuevos administradores está restringida."
-                      : "Al seleccionar un rol, se cargarán automáticamente sus módulos recomendados. El sistema permite un único SuperAdmin y un único Admin de Planta."}
+                      ? "⚠️ Como Administrador de Planta puedes crear y asignar roles operativos (Cajero, Ventas, Producción, etc.). Por directriz de seguridad estricta, estos roles tendrán acceso a sus módulos pero NO dispondrán de opciones para editar ni eliminar registros."
+                      : "SuperAdmin y Admin poseen facultades plenas de edición y eliminación en todos los módulos; los demás roles operativos creados operan en modo registro y consulta, sin permisos para editar ni eliminar."}
                   </p>
                 </div>
 

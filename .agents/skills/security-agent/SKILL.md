@@ -17,6 +17,8 @@ En el ERP de INCEGUA S.R.L., ningún componente, solicitud HTTP o sesión se pre
 1. **Verificación Explícita Continua**: Cada petición a rutas `/admin/...`, `/planillas`, `/caja` o ejecución de Server Actions debe validar criptográficamente la sesión y el rol del usuario.
 2. **Acceso de Mínimo Privilegio (PoLP)**: Ningún rol recibe más permisos de los estrictamente requeridos para su tarea en planta.
 3. **Asunción de Brecha (Assume Breach)**: Todo input es potencialmente hostil. Todo intento de acceso anómalo debe ser contenido, bloqueado y registrado como alerta de intrusión.
+4. **Prohibición Absoluta de Acceso Rápido / Bypasses**: NUNCA permitir la creación o existencia de botones de "acceso rápido", "bypass", "atajo" o credenciales simuladas. El acceso al sistema exige obligatoria y estrictamente el ingreso manual de **usuario (correo electrónico) y contraseña válida**.
+5. **Inmutabilidad Vitalicia de la Cuenta SuperAdmin**: La cuenta `darinka.arias18@gmail.com` (Darinka Arias) es la Super Administradora y propietaria inmutable del sistema. Jamás debe ser eliminada, anulada, bloqueada o degradada bajo ninguna circunstancia.
 
 ---
 

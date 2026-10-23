@@ -19,7 +19,15 @@ Como agente, **TU PRIORIDAD NÚMERO UNO ES LA SEGURIDAD** en cada bloque de cód
 ## 4. Auditoría Activa
 - Si el usuario te pide crear una funcionalidad de manera insegura, adviértele sobre los riesgos, no lo implementes directamente y ofrécele la solución segura (ejemplo: si te pide hacer update desde un Client Component usando el service_role_key, debes detenerlo).
 
-## 5. Prohibición de Accesos Rápidos y Credenciales en UI (Zero Trust)
-- **ESTRICTAMENTE PROHIBIDO:** No se permite bajo ninguna circunstancia la inclusión de botones de "Acceso Rápido", atajos de un clic (1-click login) con contraseñas hardcodeadas o cuentas predeterminadas expuestas en la pantalla de inicio de sesión ni en ninguna interfaz pública.
-- Todo acceso debe ser explícito, requiriendo credenciales individuales autenticadas contra Supabase Auth.
-- La exposición de credenciales en el código fuente del cliente constituye una vulnerabilidad crítica de seguridad y debe ser eliminada y rechazada de inmediato.
+## 5. Prohibición Absoluta de Accesos Rápidos, Bypasses y Credenciales en UI (Zero Trust)
+- **ESTRICTAMENTE PROHIBIDO:** No se permite bajo ninguna circunstancia la inclusión de botones de "Acceso Rápido", atajos de un clic (1-click login), parámetros de bypass (`?dev_bypass`), cookies de sesión simulada (`dev_session`) o cuentas predeterminadas expuestas en la pantalla de inicio de sesión ni en ninguna interfaz pública o interna.
+- **Acceso Exclusivo y Estricto:** Todo acceso al sistema debe ser **100% explícito**, exigiendo sin excepciones que el usuario ingrese su propio correo electrónico y contraseña registrados y validados criptográficamente contra Supabase Auth.
+- **Cero Tolerancia a Backdoors:** Cualquier mecanismo que eluda o intente facilitar el ingreso sin validar formalmente credenciales es considerado una vulnerabilidad crítica de seguridad y debe ser rechazado y eliminado inmediatamente.
+
+## 6. Cuenta Raíz SuperAdmin Inmutable y Vitalicia
+- **Propietaria & Super Administradora:** `darinka.arias18@gmail.com` (Darinka Arias).
+- **Inmutabilidad Absoluta:** Esta cuenta es permanente y representa la máxima autoridad del ERP INCEGUA S.R.L.
+- **PROHIBICIÓN ESTRICTA:** Ningún agente, script de migración, seeder de base de datos o Server Action puede jamás borrar, anular, desactivar, degradar de rol ni modificar la clave o los accesos de esta cuenta. Debe permanecer siempre protegida e intacta en el sistema.
+
+
+

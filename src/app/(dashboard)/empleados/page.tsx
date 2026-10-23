@@ -13,12 +13,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { employeeSchema, EmployeeInput } from "@/lib/validations/employee.schema";
 import { formatDistanceToNowStrict, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
+import { canEditOrDelete } from "@/lib/role-validator";
+import { getCurrentUserSession } from "@/actions/auth";
 
 export default function EmpleadosPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [currentUserRole, setCurrentUserRole] = useState<string>("superadmin");
 
   const {
     register,
@@ -51,7 +54,33 @@ export default function EmpleadosPage() {
 
   useEffect(() => {
     loadData();
+
+    const fetchRole = async () => {
+      try {
+        const session = await getCurrentUserSession();
+        if (session && session.role) {
+          setCurrentUserRole(session.role);
+        } else {
+          setCurrentUserRole(store.getCurrentRole());
+        }
+      } catch (e) {
+        setCurrentUserRole(store.getCurrentRole());
+      }
+    };
+    fetchRole();
+
+    const handleRoleChanged = (e: any) => {
+      const newRole = e?.detail || store.getCurrentRole();
+      setCurrentUserRole(newRole);
+    };
+
+    window.addEventListener("erp_role_changed", handleRoleChanged);
+    return () => {
+      window.removeEventListener("erp_role_changed", handleRoleChanged);
+    };
   }, [search]);
+
+  const allowEditOrDelete = canEditOrDelete(currentUserRole);
 
   const onSubmit = async (data: EmployeeInput) => {
     store.addEmployee({
@@ -81,7 +110,7 @@ export default function EmpleadosPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const confirmDelete = async () => {
-    if (!employeeToDelete) return;
+    if (!employeeToDelete || !allowEditOrDelete) return;
     setIsDeleting(true);
     store.deleteEmployee(employeeToDelete.id);
     try {
@@ -149,7 +178,9 @@ export default function EmpleadosPage() {
                   <th className="p-3.5">Frecuencia Pago</th>
                   <th className="p-3.5 text-right">Sueldo</th>
                   <th className="p-3.5 text-center">Estado</th>
-                  <th className="p-3.5 text-center">Acciones</th>
+                  {allowEditOrDelete && (
+                    <th className="p-3.5 text-center">Acciones</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -203,17 +234,19 @@ export default function EmpleadosPage() {
                         {emp.active ? "Activo" : "Inactivo"}
                       </span>
                     </td>
-                    <td className="p-3.5 text-center">
-                      <button
-                        id={`btn-delete-${emp.id}`}
-                        type="button"
-                        onClick={() => setEmployeeToDelete(emp)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
-                        title={`Eliminar a ${emp.full_name}`}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
+                    {allowEditOrDelete && (
+                      <td className="p-3.5 text-center">
+                        <button
+                          id={`btn-delete-${emp.id}`}
+                          type="button"
+                          onClick={() => setEmployeeToDelete(emp)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                          title={`Eliminar a ${emp.full_name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

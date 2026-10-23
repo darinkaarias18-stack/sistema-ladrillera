@@ -395,7 +395,7 @@ export default function PatioEntregasPage() {
     if (d.cuadrilla_estibadores) msg += `\n*Estibadores:* ${d.cuadrilla_estibadores}\n`;
     msg += `*Encargado de Patio:* ${d.encargado_patio}\n`;
 
-    const phone = d.chofer_telefono?.replace(/\D/g, "") || "59170673385";
+    const phone = d.chofer_telefono?.replace(/\D/g, "") || "59169370911";
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
   };
 

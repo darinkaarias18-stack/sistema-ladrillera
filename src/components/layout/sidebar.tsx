@@ -182,8 +182,8 @@ export function Sidebar() {
         const session = await getCurrentUserSession();
         if (session && session.role) {
           handleRoleChange(session.role);
-          if (session.role === "superadmin") {
-            // SuperAdmin has full unrestricted access
+          if (session.role === "superadmin" || session.role === "admin") {
+            // SuperAdmin y Admin tienen acceso irrestricto a los módulos operativos
             setAllowedModules([]);
           } else if (session.allowedModules && session.allowedModules.length > 0) {
             setAllowedModules(session.allowedModules);

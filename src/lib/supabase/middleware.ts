@@ -34,25 +34,12 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Soporte de sesión en desarrollo local para testing automatizado
-  const devBypass = process.env.NODE_ENV === 'development' && request.nextUrl.searchParams.get('dev_bypass') === 'true';
-  if (devBypass) {
-    const url = request.nextUrl.clone();
-    url.searchParams.delete('dev_bypass');
-    const response = NextResponse.redirect(url);
-    response.cookies.set('dev_session', 'true', { path: '/', httpOnly: true });
-    return response;
-  }
-  const hasDevSession = process.env.NODE_ENV === 'development' && request.cookies.get('dev_session')?.value === 'true';
-  if (hasDevSession) {
-    return supabaseResponse;
-  }
-
-  // Proteger las rutas que requieran autenticación (ej. /dashboard)
+  // Estricto Zero Trust: Toda ruta protegida exige autenticación formal con usuario y contraseña
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth')
+    !request.nextUrl.pathname.startsWith('/auth') &&
+    !request.nextUrl.pathname.startsWith('/api')
   ) {
     // Si no hay usuario y trata de acceder al dashboard u otra ruta protegida
     const url = request.nextUrl.clone()

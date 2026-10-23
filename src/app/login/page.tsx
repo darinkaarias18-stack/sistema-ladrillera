@@ -42,6 +42,18 @@ export default function LoginPage() {
 
       // Registro de inicio de sesión exitoso en la auditoría inmutable
       if (data?.user) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem(
+            "erp_current_user",
+            JSON.stringify({
+              id: data.user.id,
+              name: data.user.user_metadata?.full_name || email,
+              email: email,
+              role: data.user.user_metadata?.role || "superadmin",
+            })
+          );
+        }
+
         AuditLogger.log({
           user_id: data.user.id,
           user_name: data.user.user_metadata?.full_name || email,

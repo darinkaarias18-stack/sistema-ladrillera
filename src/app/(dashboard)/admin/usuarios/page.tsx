@@ -27,7 +27,10 @@ export default async function UsuariosPage() {
     .select("role")
     .eq("id", user.id)
     .single()
-  const normalizedRole = (user.user_metadata?.role || profile?.role || "").toLowerCase()
+  const isMaster = user.email?.toLowerCase() === "darinka.arias18@gmail.com"
+  const normalizedRole = isMaster
+    ? "superadmin"
+    : (user.user_metadata?.role || profile?.role || "").toLowerCase()
     
   if (normalizedRole !== "admin" && normalizedRole !== "superadmin") {
     // Si no es admin ni superadmin, redirigir inmediatamente al dashboard principal

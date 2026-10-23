@@ -74,7 +74,7 @@ export default function EntregasPage() {
     });
     if (order.notes) msg += `\n*Observaciones:* ${order.notes}\n`;
 
-    const targetPhone = order.contact_phone?.replace(/\D/g, "") || "59170673385";
+    const targetPhone = order.contact_phone?.replace(/\D/g, "") || "59169370911";
     const waUrl = `https://wa.me/${targetPhone}?text=${encodeURIComponent(msg)}`;
     window.open(waUrl, "_blank");
   };

@@ -151,11 +151,35 @@ export async function deleteUserAction(targetUserId: string) {
     .eq("id", user.id)
     .single()
 
-  const normalizedRole = profile?.role?.toLowerCase()
+  const isMasterRequester = user.email?.toLowerCase() === "darinka.arias18@gmail.com"
+  const normalizedRole = isMasterRequester ? "superadmin" : profile?.role?.toLowerCase()
 
-  // admin y superadmin pueden eliminar
+  // Solo admin y superadmin pueden eliminar usuarios
   if (normalizedRole !== "admin" && normalizedRole !== "superadmin") {
     return { error: "Solo los administradores pueden eliminar usuarios" }
+  }
+
+  // Obtener perfil del usuario objetivo
+  const { data: targetProfile } = await adminClient
+    .from("profiles")
+    .select("id, email, full_name, role")
+    .eq("id", targetUserId)
+    .single()
+
+  const isMasterTarget = 
+    targetUserId === "83ea7d79-d6d7-4d73-b9ee-5304497df779" ||
+    targetProfile?.email?.toLowerCase() === "darinka.arias18@gmail.com"
+
+  // BLINDAJE INMUTABLE: La cuenta principal de SuperAdmin jamás puede ser borrada ni anulada
+  if (isMasterTarget) {
+    return { error: "Acción estrictamente denegada: La cuenta principal de SuperAdmin (Darinka Arias) es permanente, inmutable y jamás puede ser borrada o anulada." }
+  }
+
+  // Si quien elimina es Admin (no SuperAdmin), no puede eliminar a un Administrador ni a un SuperAdmin
+  if (normalizedRole !== "superadmin") {
+    if (targetProfile?.role === "admin" || targetProfile?.role === "superadmin") {
+      return { error: "Acceso denegado: Como Administrador de Planta solo puedes eliminar roles operativos (Cajero, Ventas, Producción, etc.)." }
+    }
   }
 
   const adminAuthClient = createClient(supabaseUrl, serviceKey, {
@@ -169,8 +193,7 @@ export async function deleteUserAction(targetUserId: string) {
     return { error: "Error al eliminar en Supabase Auth: " + deleteError.message }
   }
 
-  // Opcional: el registro de perfiles puede borrarse automáticamente con una cascada (ON DELETE CASCADE)
-  // Pero lo hacemos manualmente por si acaso
+  // Eliminar de la tabla profiles
   await adminClient.from("profiles").delete().eq("id", targetUserId)
 
   return { success: true }
@@ -192,9 +215,10 @@ export async function updateUserAction(formData: FormData) {
     .eq("id", user.id)
     .single()
 
-  const normalizedRole = profile?.role?.toLowerCase()
+  const isMasterRequester = user.email?.toLowerCase() === "darinka.arias18@gmail.com"
+  const normalizedRole = isMasterRequester ? "superadmin" : profile?.role?.toLowerCase()
 
-  // admin y superadmin pueden editar
+  // Solo admin y superadmin pueden editar
   if (normalizedRole !== "admin" && normalizedRole !== "superadmin") {
     return { error: "Solo los administradores pueden editar usuarios" }
   }
@@ -206,32 +230,34 @@ export async function updateUserAction(formData: FormData) {
   const password = formData.get("password") as string // opcional
   const allowed_modules_raw = formData.get("allowed_modules") as string
 
-  // Reglas estrictas: Solo un SuperAdmin y un Admin en el sistema.
-  if (role === "superadmin") {
-    if (normalizedRole !== "superadmin") {
-      return { error: "Solo un Super Administrador puede asignar el rol de Super Admin." }
-    }
-    const { data: existingSuper } = await adminClient
-      .from("profiles")
-      .select("id")
-      .eq("role", "superadmin")
-      .neq("id", targetUserId)
-    if (existingSuper && existingSuper.length > 0) {
-      return { error: "Solo puede existir un único Super Administrador en el sistema." }
+  // Obtener perfil del usuario objetivo
+  const { data: targetProfile } = await adminClient
+    .from("profiles")
+    .select("id, email, role")
+    .eq("id", targetUserId)
+    .single()
+
+  const isTargetMaster = 
+    targetUserId === "83ea7d79-d6d7-4d73-b9ee-5304497df779" ||
+    targetProfile?.email?.toLowerCase() === "darinka.arias18@gmail.com"
+
+  // BLINDAJE INMUTABLE: La cuenta principal de SuperAdmin jamás puede ser degradada
+  if (isTargetMaster) {
+    if (role !== "superadmin") {
+      return { error: "Acción estrictamente denegada: El rol de SuperAdmin de Darinka Arias es vitalicio e inmutable y jamás puede ser degradado." }
     }
   }
 
-  if (role === "admin") {
-    if (normalizedRole !== "superadmin" && targetUserId !== user.id) {
-      return { error: "Un Administrador no puede promover usuarios a Administrador. Solo el Super Administrador puede realizar esta designación." }
+  // Si quien edita es Admin (no SuperAdmin), no puede editar a un SuperAdmin ni promover a Admin
+  if (normalizedRole !== "superadmin") {
+    if (targetProfile?.role === "superadmin") {
+      return { error: "Acceso denegado: Un Administrador no tiene autorización para modificar los datos de un SuperAdmin." }
     }
-    const { data: existingAdmin } = await adminClient
-      .from("profiles")
-      .select("id")
-      .eq("role", "admin")
-      .neq("id", targetUserId)
-    if (existingAdmin && existingAdmin.length > 0) {
-      return { error: "Solo puede existir un único Administrador en el sistema. Ya se encuentra registrado un Administrador de Planta." }
+    if (role === "admin" && targetProfile?.role !== "admin") {
+      return { error: "Acceso denegado: Solo el Super Administrador puede designar o promover a Administradores de Planta." }
+    }
+    if (role === "superadmin") {
+      return { error: "Acceso denegado: Solo el Super Administrador puede gestionar designaciones de SuperAdmin." }
     }
   }
 

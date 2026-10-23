@@ -27,8 +27,8 @@ export async function getCurrentUserSession(): Promise<UserSessionData> {
     if (!user || userError) {
       return {
         user: null,
-        role: "superadmin",
-        allowedModules: getAllModuleHrefs(),
+        role: "cajero",
+        allowedModules: [],
       };
     }
 
@@ -53,8 +53,8 @@ export async function getCurrentUserSession(): Promise<UserSessionData> {
     const role: UserRole = rawRole;
     const isSuper = role === "superadmin";
 
-    // SuperAdmin always has ALL modules without restriction
-    const allowedModules: string[] = isSuper
+    // SuperAdmin y Admin always have ALL operational modules without restriction
+    const allowedModules: string[] = (isSuper || role === "admin")
       ? getAllModuleHrefs()
       : Array.isArray(user.user_metadata?.allowed_modules) && user.user_metadata.allowed_modules.length > 0
       ? user.user_metadata.allowed_modules
@@ -83,8 +83,8 @@ export async function getCurrentUserSession(): Promise<UserSessionData> {
     console.error("Error in getCurrentUserSession:", error);
     return {
       user: null,
-      role: "superadmin",
-      allowedModules: getAllModuleHrefs(),
+      role: "cajero",
+      allowedModules: [],
     };
   }
 }
