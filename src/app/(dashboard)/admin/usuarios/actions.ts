@@ -35,26 +35,9 @@ export async function createUserAction(formData: FormData) {
   const role = formData.get("role") as string
   const allowed_modules_raw = formData.get("allowed_modules") as string
 
-  // Reglas estrictas: Solo un SuperAdmin y un Admin en el sistema.
-  // Un Administrador logueado no puede crear ni superadmin ni otro admin.
+  // El rol de SuperAdmin es exclusivo: Ni Admin ni nadie puede crear nuevos SuperAdmin
   if (role === "superadmin") {
-    if (normalizedRole !== "superadmin") {
-      return { error: "Solo un Super Administrador puede crear o asignar el rol de Super Admin." }
-    }
-    const { data: existingSuper } = await adminClient.from("profiles").select("id").eq("role", "superadmin")
-    if (existingSuper && existingSuper.length > 0) {
-      return { error: "Solo puede existir un único Super Administrador en el sistema." }
-    }
-  }
-
-  if (role === "admin") {
-    if (normalizedRole !== "superadmin") {
-      return { error: "Un Administrador no puede crear otros usuarios Administradores. Solo el Super Administrador puede gestionar esta designación." }
-    }
-    const { data: existingAdmin } = await adminClient.from("profiles").select("id").eq("role", "admin")
-    if (existingAdmin && existingAdmin.length > 0) {
-      return { error: "Solo puede existir un único Administrador en el sistema. Ya se encuentra registrado un Administrador de Planta." }
-    }
+    return { error: "Acceso denegado: El rol de Super Administrador es único y exclusivo. No se pueden crear nuevos usuarios con este rol." }
   }
 
   let allowed_modules: string[] = []
@@ -151,8 +134,9 @@ export async function deleteUserAction(targetUserId: string) {
     .eq("id", user.id)
     .single()
 
-  const isMasterRequester = user.email?.toLowerCase() === "darinka.arias18@gmail.com"
-  const normalizedRole = isMasterRequester ? "superadmin" : profile?.role?.toLowerCase()
+  const userMetadataRole = user.user_metadata?.role?.toLowerCase()
+  const isMasterRequester = user.email?.toLowerCase() === "darinka.arias18@gmail.com" || userMetadataRole === "superadmin"
+  const normalizedRole = isMasterRequester ? "superadmin" : (profile?.role?.toLowerCase() || userMetadataRole)
 
   // Solo admin y superadmin pueden eliminar usuarios
   if (normalizedRole !== "admin" && normalizedRole !== "superadmin") {
@@ -168,33 +152,30 @@ export async function deleteUserAction(targetUserId: string) {
 
   const isMasterTarget = 
     targetUserId === "83ea7d79-d6d7-4d73-b9ee-5304497df779" ||
-    targetProfile?.email?.toLowerCase() === "darinka.arias18@gmail.com"
+    targetProfile?.email?.toLowerCase() === "darinka.arias18@gmail.com" ||
+    targetProfile?.role === "superadmin"
 
   // BLINDAJE INMUTABLE: La cuenta principal de SuperAdmin jamás puede ser borrada ni anulada
   if (isMasterTarget) {
-    return { error: "Acción estrictamente denegada: La cuenta principal de SuperAdmin (Darinka Arias) es permanente, inmutable y jamás puede ser borrada o anulada." }
-  }
-
-  // Si quien elimina es Admin (no SuperAdmin), no puede eliminar a un Administrador ni a un SuperAdmin
-  if (normalizedRole !== "superadmin") {
-    if (targetProfile?.role === "admin" || targetProfile?.role === "superadmin") {
-      return { error: "Acceso denegado: Como Administrador de Planta solo puedes eliminar roles operativos (Cajero, Ventas, Producción, etc.)." }
-    }
+    return { error: "Acción estrictamente denegada: La cuenta de Super Administrador está blindada y jamás puede ser eliminada." }
   }
 
   const adminAuthClient = createClient(supabaseUrl, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   })
 
-  // Eliminar de Supabase Auth
+  // Eliminar de Supabase Auth si existe
   const { error: deleteError } = await adminAuthClient.auth.admin.deleteUser(targetUserId)
 
-  if (deleteError) {
+  if (deleteError && !deleteError.message?.toLowerCase().includes("not found")) {
     return { error: "Error al eliminar en Supabase Auth: " + deleteError.message }
   }
 
   // Eliminar de la tabla profiles
-  await adminClient.from("profiles").delete().eq("id", targetUserId)
+  const { error: profileDeleteError } = await adminClient.from("profiles").delete().eq("id", targetUserId)
+  if (profileDeleteError) {
+    return { error: "Error al eliminar perfil: " + profileDeleteError.message }
+  }
 
   return { success: true }
 }
@@ -215,8 +196,9 @@ export async function updateUserAction(formData: FormData) {
     .eq("id", user.id)
     .single()
 
-  const isMasterRequester = user.email?.toLowerCase() === "darinka.arias18@gmail.com"
-  const normalizedRole = isMasterRequester ? "superadmin" : profile?.role?.toLowerCase()
+  const userMetadataRole = user.user_metadata?.role?.toLowerCase()
+  const isMasterRequester = user.email?.toLowerCase() === "darinka.arias18@gmail.com" || userMetadataRole === "superadmin"
+  const normalizedRole = isMasterRequester ? "superadmin" : (profile?.role?.toLowerCase() || userMetadataRole)
 
   // Solo admin y superadmin pueden editar
   if (normalizedRole !== "admin" && normalizedRole !== "superadmin") {
@@ -227,7 +209,8 @@ export async function updateUserAction(formData: FormData) {
   const full_name = formData.get("full_name") as string
   const position = formData.get("position") as string
   const role = formData.get("role") as string
-  const password = formData.get("password") as string // opcional
+  const email = (formData.get("email") as string)?.trim()
+  const password = (formData.get("password") as string)?.trim() // opcional
   const allowed_modules_raw = formData.get("allowed_modules") as string
 
   // Obtener perfil del usuario objetivo
@@ -239,26 +222,17 @@ export async function updateUserAction(formData: FormData) {
 
   const isTargetMaster = 
     targetUserId === "83ea7d79-d6d7-4d73-b9ee-5304497df779" ||
-    targetProfile?.email?.toLowerCase() === "darinka.arias18@gmail.com"
+    targetProfile?.email?.toLowerCase() === "darinka.arias18@gmail.com" ||
+    targetProfile?.role === "superadmin"
 
-  // BLINDAJE INMUTABLE: La cuenta principal de SuperAdmin jamás puede ser degradada
+  // BLINDAJE INMUTABLE: La cuenta de SuperAdmin jamás puede ser editada ni degradada
   if (isTargetMaster) {
-    if (role !== "superadmin") {
-      return { error: "Acción estrictamente denegada: El rol de SuperAdmin de Darinka Arias es vitalicio e inmutable y jamás puede ser degradado." }
-    }
+    return { error: "Acción estrictamente denegada: La cuenta de Super Administrador está blindada y no permite edición." }
   }
 
-  // Si quien edita es Admin (no SuperAdmin), no puede editar a un SuperAdmin ni promover a Admin
-  if (normalizedRole !== "superadmin") {
-    if (targetProfile?.role === "superadmin") {
-      return { error: "Acceso denegado: Un Administrador no tiene autorización para modificar los datos de un SuperAdmin." }
-    }
-    if (role === "admin" && targetProfile?.role !== "admin") {
-      return { error: "Acceso denegado: Solo el Super Administrador puede designar o promover a Administradores de Planta." }
-    }
-    if (role === "superadmin") {
-      return { error: "Acceso denegado: Solo el Super Administrador puede gestionar designaciones de SuperAdmin." }
-    }
+  // Nadie puede asignar o promover al rol de SuperAdmin
+  if (role === "superadmin" && targetProfile?.role !== "superadmin") {
+    return { error: "Acceso denegado: El rol de Super Administrador es único y exclusivo. No se puede asignar a otros usuarios." }
   }
 
   let allowed_modules: string[] = []
@@ -275,7 +249,7 @@ export async function updateUserAction(formData: FormData) {
     return { error: "Faltan campos obligatorios" }
   }
 
-  // Actualizar en Auth (user_metadata y opcionalmente password)
+  // Actualizar en Auth (user_metadata, email y password)
   const authUpdatePayload: any = {
     user_metadata: {
       role,
@@ -284,7 +258,16 @@ export async function updateUserAction(formData: FormData) {
       allowed_modules,
     }
   };
-  if (password && password.trim() !== "") {
+
+  if (email && email !== "") {
+    authUpdatePayload.email = email;
+    authUpdatePayload.email_confirm = true; // Auto-confirmar cambio de correo realizado por superadmin
+  }
+
+  if (password && password !== "") {
+    if (password.length < 6) {
+      return { error: "La nueva contraseña debe tener un mínimo de 6 caracteres." }
+    }
     authUpdatePayload.password = password;
   }
 
@@ -298,9 +281,14 @@ export async function updateUserAction(formData: FormData) {
   }
 
   // Actualizar perfil público
+  const profileUpdates: any = { full_name, position, role: role as any };
+  if (email && email !== "") {
+    profileUpdates.email = email;
+  }
+
   let { error: profileError } = await adminClient
     .from("profiles")
-    .update({ full_name, position, role: role as any })
+    .update(profileUpdates)
     .eq("id", targetUserId);
 
   if (profileError) {
@@ -310,9 +298,10 @@ export async function updateUserAction(formData: FormData) {
       ? 'produccion'
       : role;
 
+    profileUpdates.role = dbBaseRole as any;
     const { error: fallbackErr } = await adminClient
       .from("profiles")
-      .update({ full_name, position, role: dbBaseRole as any })
+      .update(profileUpdates)
       .eq("id", targetUserId);
 
     profileError = fallbackErr;

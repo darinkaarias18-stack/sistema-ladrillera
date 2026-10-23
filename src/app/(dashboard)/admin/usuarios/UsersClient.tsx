@@ -46,12 +46,15 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
   
   // Edit & Delete states
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null)
+  const [userToDelete, setUserToDelete] = useState<Profile | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
 
   // Form states for employee, full name & position
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>("")
   const [fullNameValue, setFullNameValue] = useState<string>("")
   const [positionValue, setPositionValue] = useState<string>("")
+  const [emailValue, setEmailValue] = useState<string>("")
+  const [passwordValue, setPasswordValue] = useState<string>("")
 
   // Form states for modules & role
   const [selectedRole, setSelectedRole] = useState<string>("cajero")
@@ -125,6 +128,10 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     formData.set("allowed_modules", JSON.stringify(selectedModules))
     formData.set("full_name", finalFullName)
     formData.set("position", finalPosition)
+    formData.set("email", emailValue.trim())
+    if (passwordValue.trim()) {
+      formData.set("password", passwordValue.trim())
+    }
     
     try {
       let result;
@@ -141,22 +148,23 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
         if (editingProfile) {
           const prevRole = editingProfile.role;
           const newRole = formData.get("role") as string;
+          const hasNewPassword = !!passwordValue.trim();
           AuditLogger.log({
             action: prevRole !== newRole ? "ROLE_CHANGE" : "UPDATE",
             severity: prevRole !== newRole ? "critical" : "high",
             module: "usuarios",
-            description: `Modificación de usuario: ${finalFullName} (${editingProfile.email}). Rol: "${newRole}"`,
+            description: `Modificación de usuario: ${finalFullName} (${emailValue.trim() || editingProfile.email}). ${hasNewPassword ? "Contraseña restablecida. " : ""}Rol: "${newRole}"`,
             entity_id: editingProfile.id,
-            details: { previous_role: prevRole, new_role: newRole, full_name: finalFullName, position: finalPosition }
+            details: { previous_role: prevRole, new_role: newRole, full_name: finalFullName, position: finalPosition, email: emailValue.trim(), password_changed: hasNewPassword }
           });
         } else {
           AuditLogger.log({
             action: "CREATE",
             severity: "high",
             module: "usuarios",
-            description: `Creación de nuevo usuario: ${finalFullName} (${formData.get("email")}) con rol "${formData.get("role")}"`,
-            entity_id: formData.get("email") as string,
-            details: { full_name: finalFullName, email: formData.get("email"), role: formData.get("role"), position: finalPosition }
+            description: `Creación de nuevo usuario: ${finalFullName} (${emailValue.trim()}) con rol "${formData.get("role")}"`,
+            entity_id: emailValue.trim(),
+            details: { full_name: finalFullName, email: emailValue.trim(), role: formData.get("role"), position: finalPosition }
           });
         }
 
@@ -171,9 +179,18 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     }
   }
 
-  const handleDelete = async (id: string, name?: string) => {
-    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario "${name || id}"? Esta acción no se puede deshacer.`)) return;
-    
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return
+    const id = userToDelete.id
+    const name = userToDelete.full_name || userToDelete.email
+
+    const isTargetSuper = userToDelete.role === "superadmin" || userToDelete.email?.toLowerCase() === "darinka.arias18@gmail.com"
+    if (isTargetSuper) {
+      alert("La cuenta de Super Administrador está protegida y jamás puede ser eliminada.")
+      setUserToDelete(null)
+      return
+    }
+
     setIsDeleting(id)
     try {
       const result = await deleteUserAction(id)
@@ -186,7 +203,9 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
           module: "usuarios",
           description: `Eliminación permanente de usuario "${name || id}"`,
           entity_id: id,
-        });
+        })
+        setProfiles((prev) => prev.filter((p) => p.id !== id))
+        setUserToDelete(null)
         window.location.reload()
       }
     } catch (err) {
@@ -196,7 +215,21 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     }
   }
 
+  const handleDelete = (profile: Profile) => {
+    const isTargetSuper = profile.role === "superadmin" || profile.email?.toLowerCase() === "darinka.arias18@gmail.com"
+    if (isTargetSuper) {
+      alert("La cuenta de Super Administrador está protegida y jamás puede ser eliminada.")
+      return
+    }
+    setUserToDelete(profile)
+  }
+
   const openEditModal = (profile: Profile) => {
+    const isSuper = profile.role === "superadmin" || profile.email?.toLowerCase() === "darinka.arias18@gmail.com"
+    if (isSuper) {
+      alert("La cuenta de Super Administrador está protegida y no permite edición.")
+      return
+    }
     const currentEmployees = store.getEmployees().filter((e) => e.active)
     setEmployeeList(currentEmployees)
     setEditingProfile(profile)
@@ -219,6 +252,9 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
       setPositionValue(profile.position || "")
     }
 
+    setEmailValue(profile.email || "")
+    setPasswordValue("")
+
     setError(null)
     setIsModalOpen(true)
   }
@@ -233,6 +269,8 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     setSelectedEmployeeId("")
     setFullNameValue("")
     setPositionValue("")
+    setEmailValue("")
+    setPasswordValue("")
     setError(null)
     setIsModalOpen(true)
   }
@@ -473,52 +511,58 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                       </td>
                       <td className="p-4 text-right">
                         {(() => {
-                          const isMasterAccount = 
+                          const isSuperAdminAccount = 
+                            profile.role === "superadmin" || 
                             profile.email?.toLowerCase() === "darinka.arias18@gmail.com" || 
                             profile.id === "83ea7d79-d6d7-4d73-b9ee-5304497df779";
-                          const canEditThisUser = isSuperAdmin || (activeRole === "admin" && profile.role !== "superadmin");
-                          const canDeleteThisUser = isSuperAdmin 
-                            ? !isMasterAccount 
-                            : (activeRole === "admin" && profile.role !== "superadmin" && profile.role !== "admin");
+
+                          // SuperAdmin y Admin pueden editar y eliminar a cualquier usuario EXCEPTO a la cuenta de SuperAdmin
+                          const canEditThisUser = !isSuperAdminAccount && (isSuperAdmin || activeRole === "admin");
+                          const canDeleteThisUser = !isSuperAdminAccount && (isSuperAdmin || activeRole === "admin");
 
                           return (
                             <div className="flex items-center justify-end gap-2">
-                              {/* Botón EDITAR: SuperAdmin tiene acceso absoluto para editar cualquier usuario */}
-                              {canEditThisUser && (
-                                <button 
-                                  onClick={() => openEditModal(profile)}
-                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 hover:border-orange-300 rounded-lg transition-all shadow-xs cursor-pointer"
-                                  title={`Editar datos, rol y módulos de ${profile.full_name || profile.email}`}
-                                >
-                                  <Pencil className="w-3.5 h-3.5 text-orange-600" />
-                                  <span>Editar</span>
-                                </button>
-                              )}
-
-                              {/* Indicador de Cuenta Vitalicia o Botón de Eliminar */}
-                              {isMasterAccount ? (
+                              {/* Para el caso del usuario SuperAdmin: NO hay opción de eliminar ni editar */}
+                              {isSuperAdminAccount ? (
                                 <span
-                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg shadow-xs cursor-help"
-                                  title="Cuenta Propietaria de SuperAdmin (Inmutable y Vitalicia)"
+                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg shadow-xs select-none"
+                                  title="Cuenta principal de Super Administrador: Protegida contra edición y eliminación"
                                 >
                                   <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-                                  <span>Vitalicio</span>
+                                  <span>Cuenta Protegida</span>
                                 </span>
-                              ) : canDeleteThisUser ? (
-                                <button 
-                                  onClick={() => handleDelete(profile.id, profile.full_name || profile.email)}
-                                  disabled={isDeleting === profile.id}
-                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-lg transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                                  title={`Eliminar usuario ${profile.full_name || profile.email}`}
-                                >
-                                  {isDeleting === profile.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-3.5 h-3.5" />
+                              ) : (
+                                <>
+                                  {/* Botón EDITAR: habilitado para SuperAdmin en todos los demás usuarios */}
+                                  {canEditThisUser && (
+                                    <button 
+                                      onClick={() => openEditModal(profile)}
+                                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 hover:border-orange-300 rounded-lg transition-all shadow-xs cursor-pointer"
+                                      title={`Editar datos, rol y módulos de ${profile.full_name || profile.email}`}
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-orange-600" />
+                                      <span>Editar</span>
+                                    </button>
                                   )}
-                                  <span>Eliminar</span>
-                                </button>
-                              ) : null}
+
+                                  {/* Botón ELIMINAR: habilitado para SuperAdmin en todos los demás usuarios */}
+                                  {canDeleteThisUser && (
+                                    <button 
+                                      onClick={() => handleDelete(profile)}
+                                      disabled={isDeleting === profile.id}
+                                      className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-300 hover:border-rose-600 rounded-lg transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                                      title={`Eliminar usuario ${profile.full_name || profile.email}`}
+                                    >
+                                      {isDeleting === profile.id ? (
+                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      )}
+                                      <span>Eliminar</span>
+                                    </button>
+                                  )}
+                                </>
+                              )}
                             </div>
                           );
                         })()}
@@ -626,7 +670,14 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Correo Electrónico *</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Correo Electrónico *
+                      {editingProfile && (isSuperAdmin || activeRole === "admin") && (
+                        <span className="ml-1.5 text-[10px] text-orange-600 font-semibold bg-orange-50 px-1.5 py-0.5 rounded border border-orange-200">
+                          Editable
+                        </span>
+                      )}
+                    </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <Mail className="h-4 w-4 text-slate-400" />
@@ -634,9 +685,10 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                       <input
                         name="email"
                         type="email"
-                        defaultValue={editingProfile?.email || ""}
-                        required={!editingProfile}
-                        disabled={!!editingProfile}
+                        value={emailValue}
+                        onChange={(e) => setEmailValue(e.target.value)}
+                        required
+                        disabled={editingProfile ? (!isSuperAdmin && activeRole !== "admin") : false}
                         className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm disabled:bg-slate-100 disabled:text-slate-500 bg-white"
                         placeholder="usuario@empresa.com"
                       />
@@ -644,9 +696,16 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Contraseña {editingProfile ? "(Opcional)" : "*"}
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold text-slate-700">
+                        {editingProfile ? "Asignar Nueva Contraseña" : "Contraseña *"}
+                      </label>
+                      {editingProfile && (
+                        <span className="text-[11px] text-slate-400">
+                          (Dejar en blanco para no cambiar)
+                        </span>
+                      )}
+                    </div>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                         <KeyRound className="h-4 w-4 text-slate-400" />
@@ -654,13 +713,18 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                       <input
                         name="password"
                         type="text"
+                        value={passwordValue}
+                        onChange={(e) => setPasswordValue(e.target.value)}
                         required={!editingProfile}
                         className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 text-sm bg-white"
-                        placeholder={editingProfile ? "Dejar en blanco para no cambiar" : "Mínimo 8 caracteres"}
-                        minLength={8}
-                        maxLength={20}
+                        placeholder={editingProfile ? "Escribir nueva contraseña aquí..." : "Mínimo 8 caracteres"}
                       />
                     </div>
+                    {editingProfile && (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Puedes escribir una nueva contraseña para actualizar las credenciales de este usuario.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -850,6 +914,81 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmación para Eliminar Usuario */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div 
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" 
+            onClick={() => !isDeleting && setUserToDelete(null)}
+          />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 z-10 p-6">
+            <div className="w-14 h-14 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4">
+              <Trash2 className="w-7 h-7" />
+            </div>
+
+            <div className="text-center mb-6">
+              <h3 className="text-lg font-bold text-slate-900">
+                ¿Eliminar permanentemente a este usuario?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Esta acción es irreversible y revocará de inmediato todas las credenciales y accesos al sistema ERP.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-6 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-purple-500 to-orange-400 flex items-center justify-center text-white font-bold text-sm">
+                  {userToDelete.full_name?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-bold text-slate-900 truncate">
+                    {userToDelete.full_name}
+                  </div>
+                  <div className="text-xs text-slate-500 truncate">
+                    {userToDelete.email}
+                  </div>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+                <span className="text-slate-500">Cargo: {userToDelete.position || "No asignado"}</span>
+                <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold border ${roleColors[userToDelete.role] || "bg-slate-100 text-slate-700"}`}>
+                  {roleNames[userToDelete.role] || userToDelete.role}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={isDeleting === userToDelete.id}
+                onClick={() => setUserToDelete(null)}
+                className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors text-sm font-semibold cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting === userToDelete.id}
+                onClick={confirmDeleteUser}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-all text-sm font-bold shadow-md shadow-rose-900/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isDeleting === userToDelete.id ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Eliminando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Sí, Eliminar</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

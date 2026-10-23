@@ -101,6 +101,13 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* Ocultar el botón nativo de revelar contraseña y limpiar en Microsoft Edge/IE para no interferir con el botón personalizado */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none !important;
+}
+
+
 /* Reglas de Impresión Limpia (Hoja de Control Físico) */
 @media print {
   aside,

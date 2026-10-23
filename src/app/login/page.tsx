@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { AuditLogger } from "@/lib/audit-logger"
@@ -25,15 +25,34 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const emailInputRef = useRef<HTMLInputElement>(null)
+  const passwordInputRef = useRef<HTMLInputElement>(null)
+
+  const togglePasswordVisibility = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    // Si el navegador autocompletó el campo pero el estado de React aún no lo capturó, sincronizarlo
+    if (passwordInputRef.current) {
+      const domValue = passwordInputRef.current.value
+      if (domValue && !password) {
+        setPassword(domValue)
+      }
+    }
+    setShowPassword((prev) => !prev)
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
+    // Asegurar que si el navegador autocompletó los campos, se tomen los valores actuales del DOM
+    const finalEmail = (email || emailInputRef.current?.value || "").trim()
+    const finalPassword = password || passwordInputRef.current?.value || ""
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password: password,
+        email: finalEmail,
+        password: finalPassword,
       })
 
       if (error) {
@@ -117,6 +136,7 @@ export default function LoginPage() {
                     <Mail className="h-5 w-5 text-zinc-500" />
                   </div>
                   <input
+                    ref={emailInputRef}
                     id="email"
                     name="email"
                     type="email"
@@ -146,6 +166,7 @@ export default function LoginPage() {
                     <Lock className="h-5 w-5 text-zinc-500" />
                   </div>
                   <input
+                    ref={passwordInputRef}
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
@@ -158,8 +179,12 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-500 hover:text-zinc-300 transition-colors focus:outline-none cursor-pointer"
+                    tabIndex={-1}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={togglePasswordVisibility}
+                    title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    className="absolute inset-y-0 right-0 w-10 flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-colors focus:outline-none cursor-pointer z-10"
                   >
                     {showPassword ? (
                       <EyeOff className="h-5 w-5" />

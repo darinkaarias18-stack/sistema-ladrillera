@@ -44,10 +44,11 @@ export async function getCurrentUserSession(): Promise<UserSessionData> {
       .single();
 
     // Check role from metadata, database profile, or fallback
+    const isMaster = user.email?.toLowerCase() === "darinka.arias18@gmail.com";
     const rawRole = (
-      user.user_metadata?.role ||
-      profile?.role ||
-      "superadmin"
+      isMaster
+        ? "superadmin"
+        : (user.user_metadata?.role || profile?.role || "cajero")
     ).toLowerCase() as UserRole;
 
     const role: UserRole = rawRole;
