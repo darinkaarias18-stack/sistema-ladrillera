@@ -40,6 +40,11 @@ export async function createUserAction(formData: FormData) {
     return { error: "Acceso denegado: El rol de Super Administrador es único y exclusivo. No se pueden crear nuevos usuarios con este rol." }
   }
 
+  // Si quien solicita es Admin, no puede crear cuentas de Administrador
+  if (normalizedRole === "admin" && role === "admin") {
+    return { error: "Acceso denegado: Solo el Super Administrador puede crear cuentas con rol de Administrador." }
+  }
+
   let allowed_modules: string[] = []
   try {
     if (allowed_modules_raw) {
@@ -160,6 +165,11 @@ export async function deleteUserAction(targetUserId: string) {
     return { error: "Acción estrictamente denegada: La cuenta de Super Administrador está blindada y jamás puede ser eliminada." }
   }
 
+  // Un Administrador no puede eliminar a un Administrador
+  if (normalizedRole === "admin" && targetProfile?.role === "admin") {
+    return { error: "Acceso denegado: Un Administrador no tiene permisos para eliminar una cuenta de Administrador." }
+  }
+
   const adminAuthClient = createClient(supabaseUrl, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false }
   })
@@ -228,6 +238,11 @@ export async function updateUserAction(formData: FormData) {
   // BLINDAJE INMUTABLE: La cuenta de SuperAdmin jamás puede ser editada ni degradada
   if (isTargetMaster) {
     return { error: "Acción estrictamente denegada: La cuenta de Super Administrador está blindada y no permite edición." }
+  }
+
+  // Un Administrador no puede editar a un Administrador
+  if (normalizedRole === "admin" && targetProfile?.role === "admin") {
+    return { error: "Acceso denegado: Un Administrador no tiene permisos para editar la cuenta de un Administrador." }
   }
 
   // Nadie puede asignar o promover al rol de SuperAdmin

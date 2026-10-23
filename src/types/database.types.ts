@@ -66,6 +66,7 @@ export interface BrickType {
   sale_price: number;
   estimated_cost?: number;
   active: boolean;
+  image_url?: string;
 }
 
 export interface ProductionBatch {

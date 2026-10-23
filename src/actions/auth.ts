@@ -81,7 +81,7 @@ export async function getCurrentUserSession(): Promise<UserSessionData> {
       allowedModules,
     };
   } catch (error) {
-    console.error("Error in getCurrentUserSession:", error);
+    console.warn("Could not retrieve current session in server action:", error);
     return {
       user: null,
       role: "cajero",

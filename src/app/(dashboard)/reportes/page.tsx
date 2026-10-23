@@ -53,7 +53,6 @@ export default function ReportesPage() {
   const [selectedMonth, setSelectedMonth] = useState<string>("2026-10");
   const [customStartDate, setCustomStartDate] = useState<string>("2026-10-01");
   const [customEndDate, setCustomEndDate] = useState<string>("2026-10-17");
-  const [ledgerTypeFilter, setLedgerTypeFilter] = useState<"all" | "ingreso" | "egreso">("all");
 
   const [batches, setBatches] = useState<any[]>([]);
   const [brickTypes, setBrickTypes] = useState<any[]>([]);
@@ -705,92 +704,6 @@ export default function ReportesPage() {
                     <Bar dataKey="egresos" name="Egresos" fill="#F43F5E" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Tabla Detallada del Libro de Compra y Venta */}
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-              <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50/50">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <div>
-                    <h4 className="font-bold text-slate-800 text-sm">Asientos del Libro de Compra y Venta</h4>
-                    <p className="text-xs text-slate-500">Historial de registros contables y fiscales</p>
-                  </div>
-                  <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold bg-orange-100 text-orange-800 border border-orange-200">
-                    {filterSummaryText}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-slate-500 font-medium">Ver:</span>
-                    <select
-                      value={ledgerTypeFilter}
-                      onChange={(e: any) => setLedgerTypeFilter(e.target.value)}
-                      className="text-xs bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer shadow-2xs"
-                    >
-                      <option value="all">Todos los Movimientos</option>
-                      <option value="ingreso">Solo Ventas (Ingresos)</option>
-                      <option value="egreso">Solo Compras y Gastos (Egresos)</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 font-bold uppercase tracking-wider">
-                      <th className="p-3.5">Fecha</th>
-                      <th className="p-3.5">Tipo</th>
-                      <th className="p-3.5">Categoría</th>
-                      <th className="p-3.5">Concepto / Descripción</th>
-                      <th className="p-3.5 text-right">Debe (Egresos)</th>
-                      <th className="p-3.5 text-right">Haber (Ingresos)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredCashLedger
-                      .filter((e) => {
-                        if (ledgerTypeFilter === "ingreso") return e.amount > 0;
-                        if (ledgerTypeFilter === "egreso") return e.amount < 0;
-                        return true;
-                      })
-                      .map((entry) => {
-                        const isIngreso = entry.amount > 0;
-                        return (
-                          <tr key={entry.id} className="hover:bg-slate-50 transition">
-                            <td className="p-3.5 font-mono text-slate-600 font-medium">{entry.movement_date}</td>
-                            <td className="p-3.5">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                                  isIngreso
-                                    ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
-                                    : "bg-rose-100 text-rose-700 border border-rose-200"
-                                }`}
-                              >
-                                {isIngreso ? "Venta" : "Compra / Gasto"}
-                              </span>
-                            </td>
-                            <td className="p-3.5 text-slate-600 font-semibold capitalize">
-                              {entry.category ? entry.category.replace("_", " ") : "General"}
-                            </td>
-                            <td className="p-3.5 font-medium text-slate-800">{entry.description}</td>
-                            <td className="p-3.5 text-right font-mono font-bold text-rose-600">
-                              {!isIngreso
-                                ? `Bs. ${Math.abs(entry.amount).toLocaleString("es-BO", { minimumFractionDigits: 2 })}`
-                                : "-"}
-                            </td>
-                            <td className="p-3.5 text-right font-mono font-bold text-emerald-600">
-                              {isIngreso
-                                ? `Bs. ${entry.amount.toLocaleString("es-BO", { minimumFractionDigits: 2 })}`
-                                : "-"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
               </div>
             </div>
           </div>

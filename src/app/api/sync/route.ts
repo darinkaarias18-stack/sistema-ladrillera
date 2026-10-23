@@ -58,6 +58,17 @@ function sanitizePayload(table: string, data: Record<string, any>): Record<strin
 
   if (table === "payroll_details") {
     delete clean.quincena_amount;
+    delete clean.total_earned;
+    delete clean.net_pay;
+  }
+
+  if (table === "employee_settlements") {
+    // total_amount es una columna calculada/generada en PostgreSQL (GENERATED ALWAYS AS)
+    delete clean.total_amount;
+  }
+
+  if (table === "brick_types") {
+    delete clean.image_url;
   }
 
   return clean;

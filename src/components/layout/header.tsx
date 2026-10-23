@@ -61,7 +61,7 @@ export function Header({ title }: { title: string }) {
     const fetchUser = async () => {
       try {
         const session = await getCurrentUserSession();
-        if (session.user) {
+        if (session && session.user) {
           const finalName = session.user.fullName || session.user.email;
           setUserName(finalName);
           setRole(session.role);
@@ -78,11 +78,36 @@ export function Header({ title }: { title: string }) {
             );
           }
         } else {
-          setUserName("Usuario Sistema");
+          if (typeof window !== "undefined") {
+            const cached = localStorage.getItem("erp_current_user");
+            if (cached) {
+              try {
+                const parsed = JSON.parse(cached);
+                if (parsed?.name) setUserName(parsed.name);
+              } catch {}
+            } else {
+              setUserName("Usuario Sistema");
+            }
+          } else {
+            setUserName("Usuario Sistema");
+          }
           setRole(store.getCurrentRole());
         }
       } catch (err) {
-        console.error("Error fetching user in header:", err);
+        console.warn("Sesión en servidor no disponible, usando estado local:", err);
+        if (typeof window !== "undefined") {
+          const cached = localStorage.getItem("erp_current_user");
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (parsed?.name) setUserName(parsed.name);
+            } catch {}
+          } else {
+            setUserName("Usuario Sistema");
+          }
+        } else {
+          setUserName("Usuario Sistema");
+        }
         setRole(store.getCurrentRole());
       }
     };
@@ -103,75 +128,63 @@ export function Header({ title }: { title: string }) {
 
   const roleInfo = ROLE_NAMES[role] || ROLE_NAMES.superadmin;
 
-  const handleManualSync = () => {
-    supabaseSync.pullFromSupabase();
-  };
-
   const getSyncBadge = () => {
     if (!mounted) {
       return (
-        <div className="flex items-center space-x-1.5 text-xs font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full shadow-xs">
-          <Database className="w-3.5 h-3.5 text-slate-400" />
-          <span>Supabase Conectado</span>
+        <div className="flex items-center space-x-1.5 text-xs text-slate-400 bg-slate-50 border border-slate-200/60 px-2.5 py-1 rounded-full select-none">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+          <span className="text-[11px] font-medium text-slate-500">Conectando...</span>
         </div>
       );
     }
 
     if (syncState.status === "syncing" || syncState.status === "idle") {
       return (
-        <button
-          onClick={handleManualSync}
-          className="flex items-center space-x-1.5 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-300 px-3 py-1.5 rounded-full transition-all shadow-xs cursor-pointer"
-          title="Sincronizando datos con Supabase..."
+        <div 
+          className="flex items-center space-x-1.5 text-xs text-sky-700 bg-sky-50/70 border border-sky-200/60 px-2.5 py-1 rounded-full select-none"
+          title="Sincronización automática activa en segundo plano"
         >
-          <RefreshCw className="w-3.5 h-3.5 text-sky-600 animate-spin" />
-          <span>Sincronizando...</span>
-        </button>
+          <RefreshCw className="w-3 h-3 text-sky-600 animate-spin" />
+          <span className="text-[11px] font-medium text-sky-700">Sincronizando...</span>
+        </div>
       );
     }
 
     if (syncState.status === "synced") {
-      const timeStr = syncState.lastSyncTime
-        ? syncState.lastSyncTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
-        : "Reciente";
       return (
-        <button
-          onClick={handleManualSync}
-          className="group flex items-center space-x-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-3 py-1.5 rounded-full transition-all shadow-xs cursor-pointer"
-          title={`Conexión activa con Supabase en tiempo real. Última sincronización: ${timeStr}. Haz clic para sincronizar ahora.`}
+        <div 
+          className="flex items-center space-x-1.5 text-xs text-slate-600 bg-slate-50 border border-slate-200/70 px-2.5 py-1 rounded-full select-none"
+          title="Sincronización automática activa con Supabase"
         >
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <Database className="w-3.5 h-3.5 text-emerald-600 group-hover:rotate-180 transition-transform duration-500" />
-          <span>Supabase Sincronizado</span>
-        </button>
+          <span className="text-[11px] font-medium text-slate-600">Sincronizado</span>
+        </div>
       );
     }
 
     if (syncState.status === "offline") {
       return (
-        <button
-          onClick={handleManualSync}
-          className="flex items-center space-x-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-full transition-all shadow-xs cursor-pointer"
-          title="Sin conexión de red. Datos almacenados localmente y se sincronizarán al reconectar."
+        <div 
+          className="flex items-center space-x-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full select-none"
+          title="Sin conexión a internet. Los datos se guardan localmente y se sincronizarán al reconectar."
         >
-          <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-          <span>Modo Local (Offline)</span>
-        </button>
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+          <span className="text-[11px] font-medium text-amber-800">Modo Local (Offline)</span>
+        </div>
       );
     }
 
     return (
-      <button
-        onClick={handleManualSync}
-        className="flex items-center space-x-1.5 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-300 px-3 py-1.5 rounded-full transition-all shadow-xs cursor-pointer"
-        title="Hubo una advertencia al conectar. Haz clic para reintentar sincronización con Supabase."
+      <div 
+        className="flex items-center space-x-1.5 text-xs text-slate-500 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full select-none"
+        title="Sincronización automática activa en segundo plano"
       >
-        <RefreshCw className="w-3.5 h-3.5 text-rose-600" />
-        <span>Reintentar Sync</span>
-      </button>
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+        <span className="text-[11px] font-medium text-slate-600">Sincronizado</span>
+      </div>
     );
   };
 

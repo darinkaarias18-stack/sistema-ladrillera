@@ -41,6 +41,7 @@ import {
 import { getTodayDateString } from "./dates";
 import { AuditLogger } from "./audit-logger";
 import { supabaseSync } from "./supabase-sync";
+import { getBrickImageUrl } from "./brick-images";
 
 function genUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -78,6 +79,7 @@ class MemoryStore {
     this.initPayrollDetails();
     this.initCustomers();
     this.initBatches();
+    this.initBrickTypes();
 
     // Sincronizar automáticamente con Supabase en el navegador
     if (typeof window !== "undefined") {
@@ -110,7 +112,13 @@ class MemoryStore {
       }
     }
     if (data.brickTypes && data.brickTypes.length > 0) {
-      this.brickTypes = data.brickTypes;
+      this.brickTypes = data.brickTypes.map((item) => ({
+        ...item,
+        image_url: item.image_url || getBrickImageUrl(item),
+      }));
+      if (typeof window !== "undefined") {
+        localStorage.setItem("erp_brick_types", JSON.stringify(this.brickTypes));
+      }
     }
     if (data.customers && data.customers.length > 0) {
       this.customers = data.customers;
@@ -298,6 +306,49 @@ class MemoryStore {
         window.dispatchEvent(new CustomEvent("erp_batches_updated"));
       } catch (e) {
         console.error("Error writing erp_production_batches to localStorage", e);
+      }
+    }
+  }
+
+  private initBrickTypes() {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("erp_brick_types");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.brickTypes = parsed.map((item: BrickType) => {
+              const init = INITIAL_BRICK_TYPES.find(
+                (ib) => ib.id === item.id || ib.name.toLowerCase().trim() === item.name?.toLowerCase().trim()
+              );
+              return {
+                ...init,
+                ...item,
+                image_url: item.image_url || getBrickImageUrl(item) || init?.image_url,
+              };
+            });
+            localStorage.setItem("erp_brick_types", JSON.stringify(this.brickTypes));
+            return;
+          }
+        }
+        this.brickTypes = INITIAL_BRICK_TYPES.map((item) => ({
+          ...item,
+          image_url: item.image_url || getBrickImageUrl(item),
+        }));
+        localStorage.setItem("erp_brick_types", JSON.stringify(this.brickTypes));
+      } catch (e) {
+        console.error("Error reading erp_brick_types from localStorage", e);
+      }
+    }
+  }
+
+  private saveBrickTypesToStorage() {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("erp_brick_types", JSON.stringify(this.brickTypes));
+        window.dispatchEvent(new CustomEvent("erp_brick_types_updated"));
+      } catch (e) {
+        console.error("Error writing erp_brick_types to localStorage", e);
       }
     }
   }
@@ -547,7 +598,30 @@ class MemoryStore {
 
   // BRICK TYPES
   getBrickTypes() {
-    return [...this.brickTypes];
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("erp_brick_types");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            this.brickTypes = parsed.map((item: BrickType) => {
+              const init = INITIAL_BRICK_TYPES.find(
+                (ib) => ib.id === item.id || ib.name.toLowerCase().trim() === item.name?.toLowerCase().trim()
+              );
+              return {
+                ...init,
+                ...item,
+                image_url: item.image_url || getBrickImageUrl(item) || init?.image_url,
+              };
+            });
+          }
+        }
+      } catch (e) {}
+    }
+    return this.brickTypes.map((item) => ({
+      ...item,
+      image_url: item.image_url || getBrickImageUrl(item),
+    }));
   }
 
   addBrickType(bt: Omit<BrickType, "id">): BrickType {
@@ -556,6 +630,7 @@ class MemoryStore {
       id: `brick-${Date.now()}`,
     };
     this.brickTypes.push(newBt);
+    this.saveBrickTypesToStorage();
 
     // Inicializar stock en 0 para las 3 ubicaciones
     const locations: InventoryLocation[] = ["patio_secado", "horno", "bodega_terminado"];
@@ -578,6 +653,30 @@ class MemoryStore {
     });
 
     return newBt;
+  }
+
+  updateBrickType(id: string, updates: Partial<Omit<BrickType, "id">>): BrickType | null {
+    const idx = this.brickTypes.findIndex(bt => bt.id === id);
+    if (idx === -1) return null;
+    this.brickTypes[idx] = {
+      ...this.brickTypes[idx],
+      ...updates
+    };
+    this.saveBrickTypesToStorage();
+
+    // Sincronización automática a Supabase
+    supabaseSync.pushChange("brick_types", "update", updates, id);
+
+    AuditLogger.log({
+      action: "UPDATE",
+      severity: "medium",
+      module: "inventario",
+      entity_id: id,
+      description: `Actualización de producto: ${this.brickTypes[idx].name}`,
+      details: updates,
+    });
+
+    return this.brickTypes[idx];
   }
 
   getNextFolioNumber(): string {

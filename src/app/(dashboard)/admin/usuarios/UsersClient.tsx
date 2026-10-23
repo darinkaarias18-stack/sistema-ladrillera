@@ -103,7 +103,21 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     }
   }, [])
   
-  const filteredProfiles = profiles.filter(p => 
+  // Si quien está en sesión es Admin (o no es SuperAdmin), nunca mostrar a "mi usuario" (SuperAdmin / Darinka)
+  const isSuperAdmin = activeRole === "superadmin";
+
+  const visibleProfiles = profiles.filter((p) => {
+    if (!isSuperAdmin) {
+      const isSuperAdminAccount =
+        p.role === "superadmin" ||
+        p.email?.toLowerCase() === "darinka.arias18@gmail.com" ||
+        p.id === "83ea7d79-d6d7-4d73-b9ee-5304497df779";
+      if (isSuperAdminAccount) return false;
+    }
+    return true;
+  });
+
+  const filteredProfiles = visibleProfiles.filter(p => 
     p.full_name?.toLowerCase().includes(search.toLowerCase()) ||
     p.email?.toLowerCase().includes(search.toLowerCase()) ||
     p.position?.toLowerCase().includes(search.toLowerCase()) ||
@@ -393,10 +407,8 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
     );
   }
 
-  const isSuperAdmin = activeRole === "superadmin" || currentUserRole === "superadmin";
-
   const canSelectSuperAdmin = isSuperAdmin;
-  const canSelectAdmin = isSuperAdmin || activeRole === "admin";
+  const canSelectAdmin = isSuperAdmin;
 
   return (
     <div className="space-y-6">
@@ -407,7 +419,7 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
             Total de Usuarios Registrados
           </h2>
           <div className="text-4xl sm:text-5xl font-bold text-white tracking-tight">
-            {profiles.length}
+            {visibleProfiles.length}
           </div>
           <p className="text-slate-400 mt-2 text-sm">
             Refleja el personal con acceso al sistema ERP, sus roles y módulos personalizados.
@@ -516,24 +528,31 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                             profile.email?.toLowerCase() === "darinka.arias18@gmail.com" || 
                             profile.id === "83ea7d79-d6d7-4d73-b9ee-5304497df779";
 
-                          // SuperAdmin y Admin pueden editar y eliminar a cualquier usuario EXCEPTO a la cuenta de SuperAdmin
-                          const canEditThisUser = !isSuperAdminAccount && (isSuperAdmin || activeRole === "admin");
-                          const canDeleteThisUser = !isSuperAdminAccount && (isSuperAdmin || activeRole === "admin");
+                          const isAdminAccount = profile.role === "admin";
+
+                          // Si es cuenta de SuperAdmin: siempre protegida
+                          // Si quien está logueado es Admin: la cuenta de Administrador NO puede ser editada ni eliminada
+                          const isProtectedAccount = isSuperAdminAccount || (!isSuperAdmin && isAdminAccount);
+
+                          const canEditThisUser = !isProtectedAccount;
+                          const canDeleteThisUser = !isProtectedAccount;
 
                           return (
                             <div className="flex items-center justify-end gap-2">
-                              {/* Para el caso del usuario SuperAdmin: NO hay opción de eliminar ni editar */}
-                              {isSuperAdminAccount ? (
+                              {isProtectedAccount ? (
                                 <span
-                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 border border-purple-200 rounded-lg shadow-xs select-none"
-                                  title="Cuenta principal de Super Administrador: Protegida contra edición y eliminación"
+                                  className="inline-flex items-center space-x-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-300 rounded-lg shadow-xs select-none"
+                                  title={
+                                    isSuperAdminAccount
+                                      ? "Cuenta principal de Super Administrador: Protegida contra edición y eliminación"
+                                      : "Cuenta de Administrador: Protegida contra edición y eliminación para el rol Administrador"
+                                  }
                                 >
-                                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                                  <ShieldCheck className="w-3.5 h-3.5 text-slate-600" />
                                   <span>Cuenta Protegida</span>
                                 </span>
                               ) : (
                                 <>
-                                  {/* Botón EDITAR: habilitado para SuperAdmin en todos los demás usuarios */}
                                   {canEditThisUser && (
                                     <button 
                                       onClick={() => openEditModal(profile)}
@@ -545,7 +564,6 @@ export function UsersClient({ initialProfiles, currentUserRole, employees: propE
                                     </button>
                                   )}
 
-                                  {/* Botón ELIMINAR: habilitado para SuperAdmin en todos los demás usuarios */}
                                   {canDeleteThisUser && (
                                     <button 
                                       onClick={() => handleDelete(profile)}

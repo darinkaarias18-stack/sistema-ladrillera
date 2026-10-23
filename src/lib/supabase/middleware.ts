@@ -30,9 +30,18 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user = null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    user = data?.user || null;
+  } catch {
+    user = null;
+  }
+
+  // Permitir que las Server Actions de Next.js procedan sin ser interceptadas con redirección HTML
+  if (request.headers.has('next-action')) {
+    return supabaseResponse;
+  }
 
   // Estricto Zero Trust: Toda ruta protegida exige autenticación formal con usuario y contraseña
   if (
@@ -42,9 +51,9 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith('/api')
   ) {
     // Si no hay usuario y trata de acceder al dashboard u otra ruta protegida
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    return NextResponse.redirect(url);
   }
 
   // Si ya está autenticado y quiere ir al login, enviarlo al dashboard

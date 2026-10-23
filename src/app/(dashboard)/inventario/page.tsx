@@ -72,6 +72,13 @@ export default function InventarioPage() {
 
   useEffect(() => {
     loadData();
+    const handleUpdate = () => loadData();
+    window.addEventListener("erp_brick_types_updated", handleUpdate);
+    window.addEventListener("erp_batches_updated", handleUpdate);
+    return () => {
+      window.removeEventListener("erp_brick_types_updated", handleUpdate);
+      window.removeEventListener("erp_batches_updated", handleUpdate);
+    };
   }, []);
 
   // 1. Obtener todas las fechas con actividad registrada (Vaciados, Ventas o Movimientos) + Hoy

@@ -190,7 +190,7 @@ export function Sidebar() {
           }
         }
       } catch (err) {
-        console.error("Error fetching user session role:", err);
+        console.warn("No se pudo obtener rol de sesión en Sidebar, usando rol actual:", err);
       }
     };
     fetchUserRole();

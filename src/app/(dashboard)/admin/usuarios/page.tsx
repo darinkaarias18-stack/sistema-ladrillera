@@ -66,6 +66,15 @@ export default async function UsuariosPage() {
     };
   });
 
+  // Si quien accede es Admin (no SuperAdmin), ocultar la cuenta principal de SuperAdmin ("mi usuario")
+  const roleFilteredProfiles = normalizedRole === "superadmin"
+    ? mergedProfiles
+    : mergedProfiles.filter(p => 
+        p.role !== "superadmin" &&
+        p.email?.toLowerCase() !== "darinka.arias18@gmail.com" &&
+        p.id !== "83ea7d79-d6d7-4d73-b9ee-5304497df779"
+      );
+
   const employees = store.getEmployees().filter(e => e.active);
 
   return (
@@ -80,7 +89,7 @@ export default async function UsuariosPage() {
         </div>
       </div>
       
-      <UsersClient initialProfiles={mergedProfiles || []} currentUserRole={normalizedRole || ""} employees={employees} />
+      <UsersClient initialProfiles={roleFilteredProfiles} currentUserRole={normalizedRole || ""} employees={employees} />
         </div>
       </div>
     </div>
