@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { AuditLogger } from "@/lib/audit-logger"
@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  ShieldCheck
+  ShieldCheck,
+  Clock
 } from "lucide-react"
 
 export default function LoginPage() {
@@ -24,6 +25,16 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isInactivityLogout, setIsInactivityLogout] = useState(false)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("reason") === "inactivity") {
+        setIsInactivityLogout(true);
+      }
+    }
+  }, [])
 
   const emailInputRef = useRef<HTMLInputElement>(null)
   const passwordInputRef = useRef<HTMLInputElement>(null)
@@ -119,6 +130,15 @@ export default function LoginPage() {
           </div>
 
           <form className="mt-10 space-y-6" onSubmit={handleLogin}>
+            {isInactivityLogout && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3.5 flex items-start gap-3 animate-in fade-in duration-200">
+                <Clock className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-300 leading-relaxed">
+                  Tu sesión se cerró automáticamente tras <strong>15 minutos de inactividad</strong> para proteger la información del sistema. Por favor, vuelve a ingresar tus credenciales.
+                </p>
+              </div>
+            )}
+
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
