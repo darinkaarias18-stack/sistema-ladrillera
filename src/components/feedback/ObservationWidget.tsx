@@ -272,7 +272,7 @@ export function ObservationWidget() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  <div className="flex-1 overflow-y-auto p-6 space-y-4 pb-12">
                     {/* 1. TIPO DE OBSERVACIÓN */}
                     <div>
                       <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
@@ -317,8 +317,8 @@ export function ObservationWidget() {
                       </div>
                     </div>
 
-                    {/* 3. DETALLE COMPLETO DE LA OBSERVACIÓN (Área ampliada y limpia) */}
-                    <div className="space-y-1.5">
+                    {/* 3. DETALLE COMPLETO DE LA OBSERVACIÓN (Con bordes 100% visibles) */}
+                    <div className="space-y-1.5 pb-2">
                       <div className="flex items-center justify-between">
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
                           3. Detalle Completo de la Observación *
@@ -327,14 +327,16 @@ export function ObservationWidget() {
                           {wordsCount} palabras · {description.length} caracteres
                         </span>
                       </div>
-                      <textarea
-                        required
-                        rows={12}
-                        value={description}
-                        onChange={(e) => setDescription(e.target.value)}
-                        placeholder="Escribe aquí con claridad todo el detalle de tu observación, cambio de precio, ajuste o consulta que deseas realizar..."
-                        className="w-full min-h-[280px] sm:min-h-[350px] text-sm leading-relaxed bg-white border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs resize-y text-slate-800 font-normal placeholder:text-slate-400"
-                      />
+                      <div className="rounded-xl border border-slate-300 bg-white shadow-xs focus-within:ring-2 focus-within:ring-orange-500 focus-within:border-orange-500 transition overflow-hidden">
+                        <textarea
+                          required
+                          rows={8}
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="Escribe aquí con claridad todo el detalle de tu observación, cambio de precio, ajuste o consulta que deseas realizar..."
+                          className="w-full min-h-[190px] sm:min-h-[220px] text-sm leading-relaxed p-4 focus:outline-none resize-y text-slate-800 font-normal placeholder:text-slate-400 block border-0"
+                        />
+                      </div>
                       <p className="text-[11px] text-slate-500 pt-1">
                         💡 <strong>Espacio libre:</strong> Puedes escribir varios párrafos, listas con viñetas, nombres de productos o cálculos exactos.
                       </p>
