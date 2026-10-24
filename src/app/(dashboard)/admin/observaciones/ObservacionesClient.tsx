@@ -170,7 +170,7 @@ export function ObservacionesClient({
           <div>
             <div className="flex items-center space-x-2">
               <span className="font-bold text-sm text-white">
-                Visibilidad para el Administrador / Cliente:
+                Visibilidad del Panel de Observaciones:
               </span>
               <span
                 className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
@@ -179,13 +179,13 @@ export function ObservacionesClient({
                     : "bg-rose-500/20 border-rose-400/40 text-rose-300"
                 }`}
               >
-                {isWidgetActive ? "HABILITADO PARA CLIENTE" : "OCULTO PARA CLIENTE"}
+                {isWidgetActive ? "ACTIVO PARA TODOS LOS ROLES" : "OCULTO PARA DEMÁS ROLES"}
               </span>
             </div>
             <p className="text-xs text-slate-300 mt-1">
               {isWidgetActive
-                ? "El Administrador (tu cliente) tiene visible el botón flotante [+ Dejar Observación] y puede redactar sus notas."
-                : "El botón está completamente oculto para el Administrador. Solo tú (SuperAdmin) puedes ver y gestionar las observaciones."}
+                ? "Todos los usuarios y roles (Admin, Cajero, Ventas, Producción, etc.) tienen visible el botón flotante [+ Dejar Observación] para redactar notas desde cualquier pantalla. Este módulo actual de gestión y exportación es exclusivo de SuperAdmin."
+                : "El botón flotante está oculto para los demás roles. Solo tú (SuperAdmin) puedes ver y gestionar las observaciones."}
             </p>
           </div>
         </div>
@@ -202,8 +202,8 @@ export function ObservacionesClient({
             }`}
             title={
               isWidgetActive
-                ? "Haz clic para ocultar el botón al Administrador"
-                : "Haz clic para volver a mostrar el botón al Administrador"
+                ? "Haz clic para ocultar el botón flotante a los demás roles"
+                : "Haz clic para volver a mostrar el botón flotante a todos los roles"
             }
           >
             <span

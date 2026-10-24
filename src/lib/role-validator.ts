@@ -165,8 +165,12 @@ export function canAccessRoute(
   // Ruta base siempre permitida a usuarios autenticados
   if (pathname === "/" || pathname === "/dashboard") return true;
 
-  // Logs de auditoría y trazabilidad: EXCLUSIVOS para superadmin (bloqueado para admin y demás)
-  if (pathname.startsWith("/admin/auditoria") || pathname.startsWith("/admin/logs")) {
+  // Logs de auditoría y Módulo de Observaciones del Cliente: EXCLUSIVOS para superadmin (bloqueado para admin y demás roles)
+  if (
+    pathname.startsWith("/admin/auditoria") ||
+    pathname.startsWith("/admin/logs") ||
+    pathname.startsWith("/admin/observaciones")
+  ) {
     return false;
   }
 

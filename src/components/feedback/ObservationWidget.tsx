@@ -70,19 +70,36 @@ export function ObservationWidget() {
 
   useEffect(() => {
     setCustomRoute(pathname);
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("erp_current_user");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          if (parsed.name) setUserName(parsed.name);
-          if (parsed.email) setUserEmail(parsed.email);
-          if (parsed.role) setUserRole(parsed.role);
-        } catch {}
-      } else {
+    const syncUser = () => {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("erp_current_user");
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (parsed.name) setUserName(parsed.name);
+            if (parsed.email) setUserEmail(parsed.email);
+            if (parsed.role) setUserRole(parsed.role);
+            return;
+          } catch {}
+        }
         setUserRole(store.getCurrentRole());
       }
-    }
+    };
+    syncUser();
+
+    const onRoleChanged = (e: any) => {
+      if (e?.detail) {
+        setUserRole(e.detail);
+      }
+      syncUser();
+    };
+
+    window.addEventListener("erp_role_changed", onRoleChanged);
+    window.addEventListener("storage", syncUser);
+    return () => {
+      window.removeEventListener("erp_role_changed", onRoleChanged);
+      window.removeEventListener("storage", syncUser);
+    };
   }, [pathname, isOpen]);
 
   // Cerrar con tecla Escape
