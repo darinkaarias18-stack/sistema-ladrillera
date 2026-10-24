@@ -161,20 +161,20 @@ export function ObservationWidget() {
 
   return (
     <>
-      {/* Botón Flotante en la esquina inferior derecha */}
+      {/* Botón Flotante en la esquina inferior derecha (Verde Muy Vistoso) */}
       <div className="fixed bottom-5 right-5 z-40 print:hidden">
         <button
           onClick={() => setIsOpen(true)}
-          className="group flex items-center space-x-2.5 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-4 py-2.5 rounded-full shadow-xl shadow-orange-950/25 hover:shadow-2xl hover:shadow-orange-900/35 transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer border border-orange-400/40"
+          className="group flex items-center space-x-2.5 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 hover:from-emerald-500 hover:via-green-500 hover:to-teal-500 text-white px-4 py-2.5 rounded-full shadow-2xl shadow-emerald-900/40 hover:shadow-emerald-500/50 transition-all duration-300 transform hover:-translate-y-1 active:translate-y-0 cursor-pointer border-2 border-emerald-300/80 ring-4 ring-emerald-500/25"
           title="Abrir panel lateral para anotar observaciones o sugerencias"
           aria-label="Dejar observación sobre el sistema"
         >
           <div className="relative">
-            <MessageSquarePlus className="w-5 h-5 text-white" />
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-white rounded-full animate-ping opacity-75"></span>
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full"></span>
+            <MessageSquarePlus className="w-5 h-5 text-white drop-shadow-sm" />
+            <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white rounded-full animate-ping opacity-90"></span>
+            <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-lime-300 rounded-full border-2 border-emerald-900 shadow-sm"></span>
           </div>
-          <span className="text-xs font-bold tracking-wide">
+          <span className="text-xs font-black tracking-wide drop-shadow-sm">
             Dejar Observación
           </span>
         </button>
@@ -199,7 +199,7 @@ export function ObservationWidget() {
               {/* Cabecera del Panel Lateral */}
               <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white px-6 py-4 sm:py-5 border-b border-slate-800 flex items-center justify-between shrink-0 shadow-sm">
                 <div className="flex items-center space-x-3.5">
-                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-orange-600/30 border border-orange-500/40 flex items-center justify-center text-orange-400 shrink-0 shadow-inner">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-emerald-600/30 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
                     <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div>
@@ -207,7 +207,7 @@ export function ObservationWidget() {
                       <h2 className="font-bold text-base sm:text-lg text-white leading-tight">
                         Panel de Observaciones & Sugerencias
                       </h2>
-                      <span className="bg-orange-500/20 border border-orange-500/40 text-orange-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                         Ampliado
                       </span>
                     </div>
@@ -378,7 +378,7 @@ export function ObservationWidget() {
                       </button>
                       <button
                         type="submit"
-                        className="inline-flex items-center space-x-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md shadow-orange-950/20 cursor-pointer"
+                        className="inline-flex items-center space-x-2 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 hover:from-emerald-500 hover:via-green-500 hover:to-teal-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-md shadow-emerald-950/20 cursor-pointer"
                       >
                         <Send className="w-4 h-4" />
                         <span>Guardar Observación</span>
