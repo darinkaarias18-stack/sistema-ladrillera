@@ -1,13 +1,46 @@
 import { NextResponse } from "next/server";
 import { SystemObservation } from "@/lib/observations-manager";
+import { createClient } from "@supabase/supabase-js";
 
-// Cache en memoria en servidor
+// Supabase client con service role si existe para operaciones seguras en servidor
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "";
+
+const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : null;
+
+// Cache en memoria como respaldo / fallback
 let serverObservations: SystemObservation[] = [];
 
 export async function GET() {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("system_observations")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        return NextResponse.json({
+          success: true,
+          observations: data,
+          source: "supabase",
+        });
+      }
+    } catch (e) {
+      console.warn("Error leyendo de Supabase system_observations:", e);
+    }
+  }
+
   return NextResponse.json({
     success: true,
     observations: serverObservations,
+    source: "memory",
   });
 }
 
@@ -18,6 +51,27 @@ export async function POST(request: Request) {
 
     if (action === "create" && observation) {
       serverObservations.unshift(observation);
+
+      if (supabase) {
+        try {
+          await supabase.from("system_observations").insert([
+            {
+              user_name: observation.user_name,
+              user_email: observation.user_email,
+              user_role: observation.user_role,
+              route: observation.route,
+              category: observation.category,
+              priority: observation.priority || "media",
+              title: observation.title,
+              description: observation.description,
+              status: observation.status || "pendiente",
+            },
+          ]);
+        } catch (e) {
+          console.warn("No se pudo insertar en Supabase (usando fallback en memoria):", e);
+        }
+      }
+
       return NextResponse.json({ success: true, observation });
     }
 
@@ -28,11 +82,32 @@ export async function POST(request: Request) {
         if (admin_notes !== undefined) target.admin_notes = admin_notes;
         if (resolved_at !== undefined) target.resolved_at = resolved_at;
       }
+
+      if (supabase) {
+        try {
+          await supabase
+            .from("system_observations")
+            .update({
+              status,
+              admin_notes,
+              resolved_at,
+            })
+            .eq("id", id);
+        } catch {}
+      }
+
       return NextResponse.json({ success: true });
     }
 
     if (action === "delete" && id) {
       serverObservations = serverObservations.filter((o) => o.id !== id);
+
+      if (supabase) {
+        try {
+          await supabase.from("system_observations").delete().eq("id", id);
+        } catch {}
+      }
+
       return NextResponse.json({ success: true });
     }
 

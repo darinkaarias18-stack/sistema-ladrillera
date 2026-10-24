@@ -100,6 +100,28 @@ export class ObservationsManager {
         ObservationsManager.observations = [...INITIAL_OBSERVATIONS];
       }
       ObservationsManager.initialized = true;
+
+      // Sincronización en segundo plano con el servidor / Supabase
+      if (typeof window !== "undefined") {
+        fetch("/api/observations")
+          .then((res) => res.json())
+          .then((data) => {
+            if (
+              data &&
+              data.success &&
+              Array.isArray(data.observations) &&
+              data.observations.length > 0
+            ) {
+              ObservationsManager.observations = data.observations;
+              localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify(data.observations)
+              );
+              window.dispatchEvent(new CustomEvent("erp_observations_updated"));
+            }
+          })
+          .catch(() => {});
+      }
     }
 
     return ObservationsManager.observations;
