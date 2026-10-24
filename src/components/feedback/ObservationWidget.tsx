@@ -158,6 +158,17 @@ export function ObservationWidget() {
   const [userName, setUserName] = useState("Usuario");
   const [userEmail, setUserEmail] = useState("");
   const [userRole, setUserRole] = useState<UserRole>("superadmin");
+  const [isEnabledForUsers, setIsEnabledForUsers] = useState(true);
+
+  useEffect(() => {
+    setIsEnabledForUsers(ObservationsManager.isWidgetEnabledForUsers());
+    const onConfigChange = () => {
+      setIsEnabledForUsers(ObservationsManager.isWidgetEnabledForUsers());
+    };
+    window.addEventListener("erp_observations_config_changed", onConfigChange);
+    return () =>
+      window.removeEventListener("erp_observations_config_changed", onConfigChange);
+  }, []);
 
   useEffect(() => {
     setCustomRoute(pathname);
@@ -228,6 +239,11 @@ export function ObservationWidget() {
 
   const isSuperAdmin = userRole === "superadmin";
   const wordsCount = description.trim() ? description.trim().split(/\s+/).length : 0;
+
+  // Si el widget está desactivado por el SuperAdmin, no mostrar el botón al Admin ni a otros usuarios
+  if (!isEnabledForUsers && !isSuperAdmin) {
+    return null;
+  }
 
   return (
     <>

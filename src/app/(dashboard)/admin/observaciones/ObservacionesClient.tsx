@@ -114,6 +114,24 @@ export function ObservacionesClient({
   const [selectedStatusInput, setSelectedStatusInput] =
     useState<ObservationStatus>("pendiente");
 
+  // Control de visibilidad del botón de observaciones para otros usuarios (Admin / Clientes)
+  const [isWidgetActive, setIsWidgetActive] = useState(true);
+
+  useEffect(() => {
+    setIsWidgetActive(ObservationsManager.isWidgetEnabledForUsers());
+    const onConfig = () => {
+      setIsWidgetActive(ObservationsManager.isWidgetEnabledForUsers());
+    };
+    window.addEventListener("erp_observations_config_changed", onConfig);
+    return () =>
+      window.removeEventListener("erp_observations_config_changed", onConfig);
+  }, []);
+
+  const handleToggleWidget = (newState: boolean) => {
+    ObservationsManager.setWidgetEnabledForUsers(newState);
+    setIsWidgetActive(newState);
+  };
+
   useEffect(() => {
     const refresh = () => {
       setObservations([...ObservationsManager.getAll()]);
@@ -207,6 +225,66 @@ export function ObservacionesClient({
 
   return (
     <div className="space-y-6">
+      {/* Control Maestro de Visibilidad del Botón de Observaciones */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-5 rounded-2xl border border-slate-800 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-3.5">
+          <div
+            className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
+              isWidgetActive
+                ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+                : "bg-rose-500/20 text-rose-400 border-rose-500/30"
+            }`}
+          >
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center space-x-2">
+              <span className="font-bold text-sm text-white">
+                Visibilidad para el Administrador / Cliente:
+              </span>
+              <span
+                className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
+                  isWidgetActive
+                    ? "bg-emerald-500/20 border-emerald-400/40 text-emerald-300"
+                    : "bg-rose-500/20 border-rose-400/40 text-rose-300"
+                }`}
+              >
+                {isWidgetActive ? "HABILITADO PARA CLIENTE" : "OCULTO PARA CLIENTE"}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1">
+              {isWidgetActive
+                ? "El Administrador (tu cliente) puede ver el botón flotante [+ Dejar Observación] y abrir el panel para escribir."
+                : "El botón está completamente oculto para el Administrador. Solo tú (SuperAdmin) puedes ver y gestionar las observaciones."}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center space-x-3 w-full md:w-auto justify-end shrink-0">
+          <span className="text-xs font-semibold text-slate-300">
+            {isWidgetActive ? "Botón Activo" : "Botón Oculto"}
+          </span>
+          <button
+            type="button"
+            onClick={() => handleToggleWidget(!isWidgetActive)}
+            className={`relative inline-flex h-7 w-14 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              isWidgetActive ? "bg-emerald-500" : "bg-slate-700"
+            }`}
+            title={
+              isWidgetActive
+                ? "Haz clic para ocultar el botón al Administrador"
+                : "Haz clic para volver a mostrar el botón al Administrador"
+            }
+          >
+            <span
+              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                isWidgetActive ? "translate-x-7" : "translate-x-0"
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
       {/* Tarjetas Métricas Resumen */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">

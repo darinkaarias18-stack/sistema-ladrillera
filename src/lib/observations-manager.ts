@@ -22,6 +22,7 @@ export interface SystemObservation {
 }
 
 const STORAGE_KEY = "erp_system_observations";
+const WIDGET_ACTIVE_KEY = "erp_observations_widget_enabled";
 
 const INITIAL_OBSERVATIONS: SystemObservation[] = [
   {
@@ -106,6 +107,32 @@ export class ObservationsManager {
 
   public static getAll(): SystemObservation[] {
     return ObservationsManager.init();
+  }
+
+  public static isWidgetEnabledForUsers(): boolean {
+    if (typeof window === "undefined") return true;
+    try {
+      const stored = localStorage.getItem(WIDGET_ACTIVE_KEY);
+      if (stored === null) return true; // Activo por defecto durante el periodo de pruebas
+      return stored === "true";
+    } catch {
+      return true;
+    }
+  }
+
+  public static setWidgetEnabledForUsers(enabled: boolean): void {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem(WIDGET_ACTIVE_KEY, enabled ? "true" : "false");
+        window.dispatchEvent(
+          new CustomEvent("erp_observations_config_changed", {
+            detail: { enabled },
+          })
+        );
+      } catch (e) {
+        console.warn("Error guardando configuración de widget:", e);
+      }
+    }
   }
 
   public static add(
