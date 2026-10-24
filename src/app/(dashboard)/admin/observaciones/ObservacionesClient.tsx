@@ -32,7 +32,7 @@ interface ObservacionesClientProps {
 }
 
 const CATEGORY_CONFIG: Record<
-  ObservationCategory,
+  string,
   { label: string; bg: string; icon: any }
 > = {
   sugerencia: {
@@ -452,7 +452,11 @@ export function ObservacionesClient({
               ) : (
                 filtered.map((obs) => {
                   const cat =
-                    CATEGORY_CONFIG[obs.category] || CATEGORY_CONFIG.general;
+                    CATEGORY_CONFIG[obs.category.toLowerCase()] || {
+                      label: obs.category || "General",
+                      bg: "bg-orange-50 text-orange-800 border-orange-200",
+                      icon: MessageSquare,
+                    };
                   const CatIcon = cat.icon;
                   const prio =
                     PRIORITY_BADGES[obs.priority] || PRIORITY_BADGES.media;

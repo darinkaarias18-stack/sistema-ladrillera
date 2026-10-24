@@ -7,22 +7,15 @@ import {
   X,
   Send,
   CheckCircle2,
-  AlertTriangle,
-  Lightbulb,
-  HelpCircle,
-  FileEdit,
   Sparkles,
   ExternalLink,
   ShieldCheck,
-  Tag,
   MapPin,
-  Layers,
-  ChevronRight,
-  Maximize2,
+  Tag,
+  PenTool,
 } from "lucide-react";
 import {
   ObservationsManager,
-  ObservationCategory,
   ObservationPriority,
 } from "@/lib/observations-manager";
 import { store } from "@/lib/store";
@@ -49,98 +42,6 @@ const MODULE_NAMES: Record<string, string> = {
   "/admin/observaciones": "Panel de Observaciones",
 };
 
-interface CategoryOption {
-  id: ObservationCategory;
-  label: string;
-  icon: typeof Lightbulb;
-  description: string;
-  color: string;
-  activeBg: string;
-  activeBorder: string;
-}
-
-const CATEGORY_OPTIONS: CategoryOption[] = [
-  {
-    id: "sugerencia",
-    label: "Sugerencia",
-    icon: Lightbulb,
-    description: "Idea para nueva función o mejora visual",
-    color: "text-amber-600",
-    activeBg: "bg-amber-50/80",
-    activeBorder: "border-amber-400 ring-2 ring-amber-400/20",
-  },
-  {
-    id: "error",
-    label: "Ajuste / Error",
-    icon: AlertTriangle,
-    description: "Algo no calcula o no funciona como esperas",
-    color: "text-rose-600",
-    activeBg: "bg-rose-50/80",
-    activeBorder: "border-rose-400 ring-2 ring-rose-400/20",
-  },
-  {
-    id: "cambio_datos",
-    label: "Datos o Precios",
-    icon: Layers,
-    description: "Ajustar valores, nombres, tarifas o catálogo",
-    color: "text-orange-600",
-    activeBg: "bg-orange-50/80",
-    activeBorder: "border-orange-400 ring-2 ring-orange-400/20",
-  },
-  {
-    id: "duda",
-    label: "Duda / Pregunta",
-    icon: HelpCircle,
-    description: "¿Cómo realizar una acción en el sistema?",
-    color: "text-sky-600",
-    activeBg: "bg-sky-50/80",
-    activeBorder: "border-sky-400 ring-2 ring-sky-400/20",
-  },
-  {
-    id: "general",
-    label: "Comentario General",
-    icon: FileEdit,
-    description: "Notas o comentarios sobre la operación",
-    color: "text-slate-600",
-    activeBg: "bg-slate-100",
-    activeBorder: "border-slate-400 ring-2 ring-slate-400/20",
-  },
-];
-
-interface PriorityOption {
-  id: ObservationPriority;
-  label: string;
-  badge: string;
-  dotColor: string;
-}
-
-const PRIORITY_OPTIONS: PriorityOption[] = [
-  {
-    id: "baja",
-    label: "Baja",
-    badge: "Detalle estético o menor",
-    dotColor: "bg-emerald-500",
-  },
-  {
-    id: "media",
-    label: "Media",
-    badge: "Mejora deseada",
-    dotColor: "bg-amber-500",
-  },
-  {
-    id: "alta",
-    label: "Alta",
-    badge: "Importante para el trabajo",
-    dotColor: "bg-orange-500",
-  },
-  {
-    id: "urgente",
-    label: "Urgente",
-    badge: "Bloqueante",
-    dotColor: "bg-rose-500",
-  },
-];
-
 export function ObservationWidget() {
   const pathname = usePathname();
   const router = useRouter();
@@ -148,8 +49,7 @@ export function ObservationWidget() {
   const [submitted, setSubmitted] = useState(false);
 
   // Form fields
-  const [category, setCategory] = useState<ObservationCategory>("sugerencia");
-  const [priority, setPriority] = useState<ObservationPriority>("media");
+  const [category, setCategory] = useState("Sugerencia");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [customRoute, setCustomRoute] = useState("");
@@ -211,8 +111,8 @@ export function ObservationWidget() {
       user_email: userEmail || "cliente@empresa.com",
       user_role: userRole,
       route: customRoute || pathname,
-      category,
-      priority,
+      category: category.trim() || "General",
+      priority: "media" as ObservationPriority,
       title: title.trim(),
       description: description.trim(),
     });
@@ -224,8 +124,7 @@ export function ObservationWidget() {
     setSubmitted(false);
     setTitle("");
     setDescription("");
-    setCategory("sugerencia");
-    setPriority("media");
+    setCategory("Sugerencia");
   };
 
   const handleClose = () => {
@@ -346,6 +245,10 @@ export function ObservationWidget() {
 
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 w-full max-w-md text-left text-xs space-y-1.5 mt-4">
                     <div>
+                      <span className="text-slate-500">Tipo:</span>{" "}
+                      <span className="font-medium text-slate-700">{category}</span>
+                    </div>
+                    <div>
                       <span className="text-slate-500">Título:</span>{" "}
                       <strong className="text-slate-800">{title}</strong>
                     </div>
@@ -376,133 +279,83 @@ export function ObservationWidget() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                    {/* Selector de Tipo de Observación (Tarjetas Interactivas) */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                        1. Tipo de Observación *
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                        {CATEGORY_OPTIONS.map((cat) => {
-                          const Icon = cat.icon;
-                          const isSelected = category === cat.id;
-                          return (
-                            <button
-                              key={cat.id}
-                              type="button"
-                              onClick={() => setCategory(cat.id)}
-                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                                isSelected
-                                  ? `${cat.activeBg} ${cat.activeBorder}`
-                                  : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/60"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between w-full mb-1">
-                                <Icon className={`w-4 h-4 ${cat.color}`} />
-                                {isSelected && (
-                                  <span className="w-2 h-2 rounded-full bg-orange-600"></span>
-                                )}
-                              </div>
-                              <div>
-                                <div className="text-xs font-bold text-slate-800 leading-tight">
-                                  {cat.label}
-                                </div>
-                                <div className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">
-                                  {cat.description}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Selector de Prioridad */}
-                    <div>
-                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
-                        2. Nivel de Urgencia / Prioridad *
-                      </label>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        {PRIORITY_OPTIONS.map((p) => {
-                          const isSelected = priority === p.id;
-                          return (
-                            <button
-                              key={p.id}
-                              type="button"
-                              onClick={() => setPriority(p.id)}
-                              className={`px-3 py-2 rounded-xl border text-left transition-all cursor-pointer flex items-center space-x-2 ${
-                                isSelected
-                                  ? "bg-slate-900 border-slate-900 text-white shadow-sm ring-2 ring-slate-900/10"
-                                  : "bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
-                              }`}
-                            >
-                              <span className={`w-2.5 h-2.5 rounded-full ${p.dotColor}`}></span>
-                              <div>
-                                <div className="text-xs font-bold leading-none">
-                                  {p.label}
-                                </div>
-                                <div
-                                  className={`text-[9px] mt-0.5 leading-none ${
-                                    isSelected ? "text-slate-300" : "text-slate-400"
-                                  }`}
-                                >
-                                  {p.badge}
-                                </div>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* Título o Resumen */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5 flex flex-col">
+                    {/* 1. TIPO DE OBSERVACIÓN (Espacio para escribir texto) */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                          3. Título o Resumen Breve *
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          1. Tipo de Observación
+                        </label>
+                        <span className="text-[11px] text-slate-400">
+                          Escribe el tema o categoría
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                          <Tag className="w-4 h-4 text-orange-600" />
+                        </div>
+                        <input
+                          type="text"
+                          value={category}
+                          onChange={(e) => setCategory(e.target.value)}
+                          placeholder="Ej. Ajuste de precios, Sugerencia, Error en cálculo, etc."
+                          className="w-full text-sm bg-white border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs font-medium text-slate-800"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 2. TÍTULO O RESUMEN BREVE */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          2. Título o Resumen Breve *
                         </label>
                         <span className="text-[11px] text-slate-400">
                           Sé conciso y claro
                         </span>
                       </div>
-                      <input
-                        type="text"
-                        required
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        placeholder="Ej. Modificar precio unitario del Ladrillo 6 Huecos / Agregar filtro por chofer"
-                        className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs font-medium text-slate-800"
-                      />
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                          <PenTool className="w-4 h-4 text-slate-400" />
+                        </div>
+                        <input
+                          type="text"
+                          required
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          placeholder="Ej. Modificar precio unitario del Ladrillo 6 Huecos / Agregar filtro por chofer"
+                          className="w-full text-sm bg-white border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs font-medium text-slate-800"
+                        />
+                      </div>
                     </div>
 
-                    {/* Detalle Ampliado (Gran Textarea) */}
-                    <div>
+                    {/* 3. DETALLE COMPLETO DE LA OBSERVACIÓN (Área ampliada con máximo espacio) */}
+                    <div className="flex-1 flex flex-col min-h-0 pt-1">
                       <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                          4. Detalle Completo de la Observación *
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                          3. Detalle Completo de la Observación *
                         </label>
-                        <span className="text-[11px] text-slate-400">
+                        <span className="text-[11px] text-slate-500 font-mono">
                           {wordsCount} palabras · {description.length} caracteres
                         </span>
                       </div>
-                      <div className="relative">
+                      <div className="flex-1 flex flex-col min-h-[300px]">
                         <textarea
                           required
-                          rows={10}
                           value={description}
                           onChange={(e) => setDescription(e.target.value)}
                           placeholder={`Escribe aquí con todo el detalle que necesites. Por ejemplo:\n• ¿Qué operación o registro estabas llenando?\n• ¿Qué datos te gustaría que cambien (nombres, montos, columnas)?\n• ¿Cómo debería funcionar el flujo de trabajo según la planta?`}
-                          className="w-full text-sm leading-relaxed bg-white border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs resize-y min-h-[220px] max-h-[460px] text-slate-800 font-normal"
+                          className="w-full flex-1 min-h-[300px] sm:min-h-[360px] md:min-h-[420px] text-sm leading-relaxed bg-white border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs resize-y text-slate-800 font-normal placeholder:text-slate-400"
                         />
                       </div>
-                      <p className="text-[11px] text-slate-500 mt-1.5">
-                        💡 <strong>Tip:</strong> Puedes incluir listas, ejemplos de cálculos, o instrucciones paso a paso. La ventana ampliada guarda el texto completo sin límites.
+                      <p className="text-[11px] text-slate-500 mt-2">
+                        💡 <strong>Tip:</strong> Tienes todo el espacio vertical para escribir párrafos completos, listas, fórmulas o instrucciones paso a paso.
                       </p>
                     </div>
 
                     {/* Acceso exclusivo SuperAdmin */}
                     {isSuperAdmin && (
-                      <div className="p-4 rounded-xl bg-purple-50/80 border border-purple-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div className="p-3.5 rounded-xl bg-purple-50/80 border border-purple-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
                         <div className="flex items-center space-x-2.5">
                           <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 shrink-0">
                             <ShieldCheck className="w-4 h-4" />

@@ -1,6 +1,6 @@
 import { UserRole } from "@/types/database.types";
 
-export type ObservationCategory = "sugerencia" | "error" | "cambio_datos" | "duda" | "general";
+export type ObservationCategory = string;
 export type ObservationPriority = "baja" | "media" | "alta" | "urgente";
 export type ObservationStatus = "pendiente" | "en_revision" | "implementado" | "descartado";
 
