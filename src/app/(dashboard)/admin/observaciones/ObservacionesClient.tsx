@@ -15,11 +15,7 @@ import {
   Sparkles,
   MessageSquare,
   ShieldCheck,
-  MapPin,
   Tag,
-  Clock,
-  Layers,
-  Users,
 } from "lucide-react";
 
 interface ObservacionesClientProps {
@@ -152,20 +148,6 @@ export function ObservacionesClient({
     return matchesSearch && matchesCategory;
   });
 
-  // Métricas de control
-  const totalCount = observations.length;
-  const uniqueScreensCount = new Set(observations.map((o) => o.route)).size;
-  const uniqueUsersCount = new Set(observations.map((o) => o.user_name)).size;
-  const lastObservationDate =
-    observations.length > 0
-      ? new Date(observations[0].created_at).toLocaleDateString("es-BO", {
-          day: "2-digit",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : "Sin registros";
-
   // Categorías únicas para el filtro
   const uniqueCategories = Array.from(
     new Set(observations.map((o) => o.category || "General"))
@@ -233,76 +215,6 @@ export function ObservacionesClient({
         </div>
       </div>
 
-      {/* Tarjetas Métricas Resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-              Total Observaciones
-            </span>
-            <span className="text-2xl font-black text-slate-900 mt-1 block">
-              {totalCount}
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Registradas en pruebas
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-orange-100 text-orange-700 flex items-center justify-center font-bold">
-            <MessageSquare className="w-6 h-6 text-orange-600" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-              Pantallas con Notas
-            </span>
-            <span className="text-2xl font-black text-slate-900 mt-1 block">
-              {uniqueScreensCount}
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Módulos observados
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-            <Layers className="w-6 h-6 text-blue-600" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-              Usuarios Participantes
-            </span>
-            <span className="text-2xl font-black text-slate-900 mt-1 block">
-              {uniqueUsersCount}
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Admin y personal
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-            <Users className="w-6 h-6 text-emerald-600" />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex items-center justify-between">
-          <div>
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-              Último Registro
-            </span>
-            <span className="text-sm font-bold text-slate-800 mt-1 block truncate max-w-[160px]">
-              {lastObservationDate}
-            </span>
-            <span className="text-[11px] text-slate-400">
-              Fecha y hora reciente
-            </span>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold">
-            <Clock className="w-6 h-6 text-purple-600" />
-          </div>
-        </div>
-      </div>
 
       {/* Barra de Herramientas y Exportación */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
