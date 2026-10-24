@@ -8,8 +8,6 @@ import {
   Send,
   CheckCircle2,
   Sparkles,
-  ExternalLink,
-  ShieldCheck,
   MapPin,
   Tag,
   PenTool,
@@ -202,33 +200,13 @@ export function ObservationWidget() {
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  {isSuperAdmin && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsOpen(false);
-                        router.push("/admin/observaciones");
-                      }}
-                      className="hidden sm:inline-flex items-center space-x-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer"
-                      title="Ir al panel de control de observaciones y exportar en Word"
-                    >
-                      <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
-                      <span>Ver Panel Word</span>
-                      <ExternalLink className="w-3 h-3 text-purple-300" />
-                    </button>
-                  )}
-                  <span className="hidden sm:inline-block text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-1 rounded border border-slate-700">
-                    Esc
-                  </span>
-                  <button
-                    onClick={handleClose}
-                    className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition cursor-pointer"
-                    title="Cerrar panel lateral"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
+                <button
+                  onClick={handleClose}
+                  className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition cursor-pointer"
+                  title="Cerrar panel lateral"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
               {/* Módulo / Pantalla Detectada (Barra de Contexto) */}
