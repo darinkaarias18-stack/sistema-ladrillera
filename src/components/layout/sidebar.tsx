@@ -22,7 +22,8 @@ import {
   LogOut,
   Truck,
   Warehouse,
-  FlameKindling
+  FlameKindling,
+  MessageSquareText
 } from "lucide-react";
 import { UserRole } from "@/types/database.types";
 import { useState, useEffect } from "react";
@@ -158,6 +159,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: FileText,
     allowedRoles: ["superadmin"],
   },
+  {
+    name: "Observaciones del Cliente",
+    href: "/admin/observaciones",
+    icon: MessageSquareText,
+    allowedRoles: ["superadmin"],
+  },
 ];
 
 export function Sidebar() {
@@ -217,8 +224,8 @@ export function Sidebar() {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("erp_role_changed", { detail: role }));
     }
-    // Si está en /admin/auditoria y no es superadmin, redirigir al dashboard
-    if (pathname.startsWith("/admin/auditoria") && role !== "superadmin") {
+    // Si está en /admin/auditoria o /admin/observaciones y no es superadmin, redirigir al dashboard
+    if ((pathname.startsWith("/admin/auditoria") || pathname.startsWith("/admin/observaciones")) && role !== "superadmin") {
       router.push("/");
     } else if (pathname.startsWith("/admin") && role !== "superadmin" && role !== "admin") {
       router.push("/");

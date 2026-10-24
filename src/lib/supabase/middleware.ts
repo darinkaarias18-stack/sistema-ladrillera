@@ -63,8 +63,15 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Proteger rutas /admin/auditoria exclusivamente para superadmin
-  if (user && (request.nextUrl.pathname.startsWith('/admin/auditoria') || request.nextUrl.pathname.startsWith('/admin/logs'))) {
+  // Proteger rutas /admin/auditoria y /admin/observaciones exclusivamente para superadmin
+  if (
+    user &&
+    (
+      request.nextUrl.pathname.startsWith('/admin/auditoria') ||
+      request.nextUrl.pathname.startsWith('/admin/logs') ||
+      request.nextUrl.pathname.startsWith('/admin/observaciones')
+    )
+  ) {
     const role = (user.user_metadata?.role || '').toLowerCase();
     if (role !== 'superadmin') {
       const url = request.nextUrl.clone()
