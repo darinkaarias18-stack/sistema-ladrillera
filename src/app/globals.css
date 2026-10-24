@@ -173,4 +173,20 @@ input::-ms-clear {
   }
 }
 
+/* Animación de apertura lateral derecha (Drawer / Slide-over) */
+@keyframes drawerSlideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-drawer-right {
+  animation: drawerSlideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 
