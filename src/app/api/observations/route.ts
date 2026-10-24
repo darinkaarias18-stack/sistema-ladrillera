@@ -61,10 +61,8 @@ export async function POST(request: Request) {
               user_role: observation.user_role,
               route: observation.route,
               category: observation.category,
-              priority: observation.priority || "media",
               title: observation.title,
               description: observation.description,
-              status: observation.status || "pendiente",
             },
           ]);
         } catch (e) {

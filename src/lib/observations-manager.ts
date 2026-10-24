@@ -264,34 +264,15 @@ export class ObservationsManager {
 
     const headers = [
       "ID",
-      "Fecha y Hora (Local)",
+      "Fecha y Hora",
+      "Pantalla / Ruta",
+      "Tipo de Observacion",
+      "Titulo",
+      "Detalle de la Observacion",
       "Usuario",
       "Correo",
       "Rol",
-      "Pantalla / Ruta",
-      "Categoria",
-      "Prioridad",
-      "Estado",
-      "Titulo de la Observacion",
-      "Detalle / Descripcion",
-      "Notas SuperAdmin",
-      "Fecha Resolucion"
     ];
-
-    const categoryLabels: Record<string, string> = {
-      sugerencia: "Sugerencia / Mejora",
-      error: "Ajuste / Error",
-      cambio_datos: "Cambio de Datos",
-      duda: "Duda / Pregunta",
-      general: "General",
-    };
-
-    const statusLabels: Record<string, string> = {
-      pendiente: "Pendiente",
-      en_revision: "En Revision",
-      implementado: "Implementado / Resuelto",
-      descartado: "Descartado",
-    };
 
     const rows = list.map((o) => {
       const localDate = new Date(o.created_at).toLocaleString("es-BO", {
@@ -308,17 +289,13 @@ export class ObservationsManager {
       return [
         o.id,
         `"${localDate}"`,
-        cleanText(o.user_name),
-        o.user_email || "",
-        o.user_role || "",
-        o.route || "/",
-        `"${categoryLabels[o.category] || o.category}"`,
-        (o.priority || "media").toUpperCase(),
-        `"${statusLabels[o.status] || o.status}"`,
+        cleanText(o.route || "/"),
+        cleanText(o.category || "General"),
         cleanText(o.title),
         cleanText(o.description),
-        cleanText(o.admin_notes),
-        o.resolved_at ? `"${new Date(o.resolved_at).toLocaleDateString("es-BO")}"` : '""',
+        cleanText(o.user_name),
+        cleanText(o.user_email || ""),
+        cleanText(o.user_role || "admin"),
       ].join(",");
     });
 
@@ -332,20 +309,6 @@ export class ObservationsManager {
       timeStyle: "short",
     });
 
-    const statusLabels: Record<
-      string,
-      { label: string; color: string; bg: string }
-    > = {
-      pendiente: { label: "Pendiente", color: "#92400e", bg: "#fef3c7" },
-      en_revision: { label: "En Revisión", color: "#1e40af", bg: "#dbeafe" },
-      implementado: {
-        label: "Implementado / Resuelto",
-        color: "#065f46",
-        bg: "#d1fae5",
-      },
-      descartado: { label: "Descartado", color: "#475569", bg: "#f1f5f9" },
-    };
-
     const tableRows = list
       .map((o, idx) => {
         const dateStr = new Date(o.created_at).toLocaleString("es-BO", {
@@ -355,11 +318,6 @@ export class ObservationsManager {
           hour: "2-digit",
           minute: "2-digit",
         });
-        const stat = statusLabels[o.status] || {
-          label: o.status,
-          color: "#334155",
-          bg: "#f8fafc",
-        };
         const safeDesc = (o.description || "")
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
@@ -373,45 +331,32 @@ export class ObservationsManager {
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");
-        const safeNotes = o.admin_notes
-          ? `<div style="margin-top: 6pt; padding: 5pt 8pt; background-color: #f3e8ff; border-left: 3pt solid #9333ea; font-size: 8.5pt; color: #581c87;">
-               <strong>Nota SuperAdmin:</strong> ${o.admin_notes
-                 .replace(/&/g, "&amp;")
-                 .replace(/</g, "&lt;")
-                 .replace(/>/g, "&gt;")
-                 .replace(/\n/g, "<br/>")}
-             </div>`
-          : "";
 
         return `
           <tr style="border-bottom: 1pt solid #cbd5e1; ${
             idx % 2 === 1 ? "background-color: #f8fafc;" : "background-color: #ffffff;"
           }">
-            <td style="padding: 8pt; font-weight: bold; color: #64748b; text-align: center; width: 30pt; vertical-align: top;">${
+            <td style="padding: 8pt; font-weight: bold; color: #64748b; text-align: center; width: 25pt; vertical-align: top;">${
               idx + 1
             }</td>
             <td style="padding: 8pt; white-space: nowrap; font-size: 8.5pt; color: #334155; width: 85pt; vertical-align: top;">${dateStr}</td>
+            <td style="padding: 8pt; font-size: 8.5pt; color: #64748b; width: 85pt; vertical-align: top; font-family: monospace;">
+              ${o.route || "/"}
+            </td>
             <td style="padding: 8pt; font-size: 8.5pt; width: 80pt; vertical-align: top;">
               <span style="display: inline-block; padding: 2pt 6pt; border-radius: 3pt; background-color: #ffedd5; color: #9a3412; font-weight: bold; font-size: 8pt;">
                 ${safeCategory}
               </span>
             </td>
-            <td style="padding: 8pt; vertical-align: top;">
-              <div style="font-weight: bold; font-size: 10pt; color: #0f172a; margin-bottom: 4pt;">${safeTitle}</div>
-              <div style="font-size: 9pt; color: #334155; line-height: 1.5; white-space: normal;">${safeDesc}</div>
-              ${safeNotes}
+            <td style="padding: 8pt; font-weight: bold; font-size: 9.5pt; color: #0f172a; width: 110pt; vertical-align: top;">
+              ${safeTitle}
             </td>
-            <td style="padding: 8pt; font-size: 8.5pt; color: #334155; width: 90pt; vertical-align: top;">
+            <td style="padding: 8pt; vertical-align: top; font-size: 9pt; color: #334155; line-height: 1.5; white-space: normal;">
+              ${safeDesc}
+            </td>
+            <td style="padding: 8pt; font-size: 8.5pt; color: #334155; width: 85pt; vertical-align: top;">
               <div style="font-weight: 600; color: #0f172a;">${o.user_name || "Usuario"}</div>
               <div style="color: #64748b; font-size: 8pt; text-transform: uppercase;">${o.user_role || "admin"}</div>
-              <div style="color: #94a3b8; font-size: 7.5pt; font-family: monospace; margin-top: 2pt;">${o.route || "/"}</div>
-            </td>
-            <td style="padding: 8pt; text-align: center; width: 85pt; vertical-align: top;">
-              <span style="display: inline-block; padding: 3pt 7pt; border-radius: 4pt; font-size: 8pt; font-weight: bold; color: ${
-                stat.color
-              }; background-color: ${stat.bg}; border: 1pt solid ${stat.color}40;">
-                ${stat.label}
-              </span>
             </td>
           </tr>
         `;
@@ -522,18 +467,19 @@ export class ObservationsManager {
         <table class="data-table">
           <thead>
             <tr>
-              <th style="width: 30pt; text-align: center;">#</th>
+              <th style="width: 25pt; text-align: center;">#</th>
               <th style="width: 85pt;">Fecha</th>
+              <th style="width: 85pt;">Pantalla / Módulo</th>
               <th style="width: 80pt;">Tipo</th>
-              <th>Título y Detalle de la Observación</th>
-              <th style="width: 90pt;">Usuario / Módulo</th>
-              <th style="width: 85pt; text-align: center;">Estado</th>
+              <th style="width: 110pt;">Título</th>
+              <th>Detalle de la Observación</th>
+              <th style="width: 85pt;">Usuario</th>
             </tr>
           </thead>
           <tbody>
             ${
               tableRows ||
-              '<tr><td colspan="6" style="padding: 20pt; text-align: center; color: #94a3b8;">No se han registrado observaciones aún.</td></tr>'
+              '<tr><td colspan="7" style="padding: 20pt; text-align: center; color: #94a3b8;">No se han registrado observaciones aún.</td></tr>'
             }
           </tbody>
         </table>
