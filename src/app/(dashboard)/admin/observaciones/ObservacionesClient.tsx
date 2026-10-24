@@ -145,6 +145,21 @@ export function ObservacionesClient({
     };
   }, []);
 
+  const handleExportWord = () => {
+    const blob = ObservationsManager.exportToWord();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dateStr = new Date().toISOString().split("T")[0];
+    link.href = url;
+    link.setAttribute(
+      "download",
+      `Reporte_Observaciones_INCEGUA_${dateStr}.doc`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleExportCSV = () => {
     const csvContent = ObservationsManager.exportToCSV();
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -409,15 +424,23 @@ export function ObservacionesClient({
           </select>
         </div>
 
-        {/* Botón de Exportación a Excel */}
-        <div className="flex items-center space-x-2 shrink-0 w-full sm:w-auto justify-end">
+        {/* Botones de Exportación */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0 w-full sm:w-auto justify-end">
+          <button
+            onClick={handleExportWord}
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center space-x-2 bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm hover:shadow-md cursor-pointer border border-blue-800"
+            title="Descargar reporte completo formateado en documento Microsoft Word (.doc)"
+          >
+            <FileText className="w-4 h-4 text-blue-200" />
+            <span>📄 Exportar a Word (.doc)</span>
+          </button>
           <button
             onClick={handleExportCSV}
-            className="w-full sm:w-auto inline-flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm hover:shadow-md cursor-pointer"
-            title="Descargar reporte completo en formato CSV listo para Microsoft Excel"
+            className="flex-1 sm:flex-initial inline-flex items-center justify-center space-x-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-3.5 py-2 rounded-xl text-xs font-bold transition border border-slate-200 cursor-pointer"
+            title="Descargar reporte en formato CSV para Excel"
           >
-            <Download className="w-4 h-4" />
-            <span>📥 Exportar a Excel (CSV)</span>
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Excel (CSV)</span>
           </button>
         </div>
       </div>

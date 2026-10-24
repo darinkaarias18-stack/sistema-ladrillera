@@ -182,14 +182,14 @@ export function ObservationWidget() {
               onClick={(e) => e.stopPropagation()}
             >
               {/* Cabecera del Panel Lateral */}
-              <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white px-6 py-5 border-b border-slate-800 flex items-center justify-between shrink-0 shadow-sm">
+              <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white px-6 py-4 sm:py-5 border-b border-slate-800 flex items-center justify-between shrink-0 shadow-sm">
                 <div className="flex items-center space-x-3.5">
-                  <div className="w-11 h-11 rounded-xl bg-orange-600/30 border border-orange-500/40 flex items-center justify-center text-orange-400 shrink-0 shadow-inner">
-                    <Sparkles className="w-6 h-6" />
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-orange-600/30 border border-orange-500/40 flex items-center justify-center text-orange-400 shrink-0 shadow-inner">
+                    <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
                   </div>
                   <div>
                     <div className="flex items-center space-x-2">
-                      <h2 className="font-bold text-lg text-white leading-tight">
+                      <h2 className="font-bold text-base sm:text-lg text-white leading-tight">
                         Panel de Observaciones & Sugerencias
                       </h2>
                       <span className="bg-orange-500/20 border border-orange-500/40 text-orange-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
@@ -203,6 +203,21 @@ export function ObservationWidget() {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  {isSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsOpen(false);
+                        router.push("/admin/observaciones");
+                      }}
+                      className="hidden sm:inline-flex items-center space-x-1.5 bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer"
+                      title="Ir al panel de control de observaciones y exportar en Word"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5 text-purple-300" />
+                      <span>Ver Panel Word</span>
+                      <ExternalLink className="w-3 h-3 text-purple-300" />
+                    </button>
+                  )}
                   <span className="hidden sm:inline-block text-[11px] font-mono text-slate-400 bg-slate-800/80 px-2 py-1 rounded border border-slate-700">
                     Esc
                   </span>
@@ -217,7 +232,7 @@ export function ObservationWidget() {
               </div>
 
               {/* Módulo / Pantalla Detectada (Barra de Contexto) */}
-              <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <div className="bg-slate-50 border-b border-slate-200 px-6 py-2.5 flex flex-wrap items-center justify-between gap-2 shrink-0">
                 <div className="flex items-center space-x-2 text-xs">
                   <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0" />
                   <span className="font-semibold text-slate-600">Pantalla actual:</span>
@@ -279,17 +294,12 @@ export function ObservationWidget() {
                 </div>
               ) : (
                 <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0">
-                  <div className="flex-1 overflow-y-auto p-6 space-y-5 flex flex-col">
-                    {/* 1. TIPO DE OBSERVACIÓN (Espacio para escribir texto) */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    {/* 1. TIPO DE OBSERVACIÓN */}
                     <div>
-                      <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                          1. Tipo de Observación
-                        </label>
-                        <span className="text-[11px] text-slate-400">
-                          Escribe el tema o categoría
-                        </span>
-                      </div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
+                        1. Tipo o Tema de la Observación
+                      </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                           <Tag className="w-4 h-4 text-orange-600" />
@@ -298,7 +308,7 @@ export function ObservationWidget() {
                           type="text"
                           value={category}
                           onChange={(e) => setCategory(e.target.value)}
-                          placeholder="Ej. Ajuste de precios, Sugerencia, Error en cálculo, etc."
+                          placeholder="Ej. Ajuste de precios, Sugerencia, Error en cálculo, Catálogo, etc."
                           className="w-full text-sm bg-white border border-slate-300 rounded-xl pl-10 pr-3.5 py-2.5 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs font-medium text-slate-800"
                         />
                       </div>
@@ -329,9 +339,9 @@ export function ObservationWidget() {
                       </div>
                     </div>
 
-                    {/* 3. DETALLE COMPLETO DE LA OBSERVACIÓN (Área ampliada con máximo espacio) */}
-                    <div className="flex-1 flex flex-col min-h-0 pt-1">
-                      <div className="flex items-center justify-between mb-1.5">
+                    {/* 3. DETALLE COMPLETO DE LA OBSERVACIÓN (Área ampliada y limpia) */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
                         <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
                           3. Detalle Completo de la Observación *
                         </label>
@@ -339,49 +349,18 @@ export function ObservationWidget() {
                           {wordsCount} palabras · {description.length} caracteres
                         </span>
                       </div>
-                      <div className="flex-1 flex flex-col min-h-[300px]">
-                        <textarea
-                          required
-                          value={description}
-                          onChange={(e) => setDescription(e.target.value)}
-                          placeholder={`Escribe aquí con todo el detalle que necesites. Por ejemplo:\n• ¿Qué operación o registro estabas llenando?\n• ¿Qué datos te gustaría que cambien (nombres, montos, columnas)?\n• ¿Cómo debería funcionar el flujo de trabajo según la planta?`}
-                          className="w-full flex-1 min-h-[300px] sm:min-h-[360px] md:min-h-[420px] text-sm leading-relaxed bg-white border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs resize-y text-slate-800 font-normal placeholder:text-slate-400"
-                        />
-                      </div>
-                      <p className="text-[11px] text-slate-500 mt-2">
-                        💡 <strong>Tip:</strong> Tienes todo el espacio vertical para escribir párrafos completos, listas, fórmulas o instrucciones paso a paso.
+                      <textarea
+                        required
+                        rows={12}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="Escribe aquí con claridad todo el detalle de tu observación, cambio de precio, ajuste o consulta que deseas realizar..."
+                        className="w-full min-h-[280px] sm:min-h-[350px] text-sm leading-relaxed bg-white border border-slate-300 rounded-xl p-4 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 focus:outline-none transition shadow-xs resize-y text-slate-800 font-normal placeholder:text-slate-400"
+                      />
+                      <p className="text-[11px] text-slate-500 pt-1">
+                        💡 <strong>Espacio libre:</strong> Puedes escribir varios párrafos, listas con viñetas, nombres de productos o cálculos exactos.
                       </p>
                     </div>
-
-                    {/* Acceso exclusivo SuperAdmin */}
-                    {isSuperAdmin && (
-                      <div className="p-3.5 rounded-xl bg-purple-50/80 border border-purple-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
-                        <div className="flex items-center space-x-2.5">
-                          <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 shrink-0">
-                            <ShieldCheck className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-purple-900">
-                              Panel de Control SuperAdmin
-                            </div>
-                            <div className="text-[11px] text-purple-700">
-                              Revisa todas las notas del cliente y descárgalas en Excel.
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsOpen(false);
-                            router.push("/admin/observaciones");
-                          }}
-                          className="inline-flex items-center space-x-1.5 bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer shrink-0"
-                        >
-                          <span>Ver y Exportar</span>
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    )}
                   </div>
 
                   {/* Pie de Acciones Pegado al Fondo (Sticky Footer) */}

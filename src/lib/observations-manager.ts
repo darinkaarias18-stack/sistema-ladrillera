@@ -302,4 +302,229 @@ export class ObservationsManager {
 
     return "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
   }
+
+  public static exportToWord(): Blob {
+    const list = ObservationsManager.getAll();
+    const currentDate = new Date().toLocaleString("es-BO", {
+      dateStyle: "full",
+      timeStyle: "short",
+    });
+
+    const statusLabels: Record<
+      string,
+      { label: string; color: string; bg: string }
+    > = {
+      pendiente: { label: "Pendiente", color: "#92400e", bg: "#fef3c7" },
+      en_revision: { label: "En Revisión", color: "#1e40af", bg: "#dbeafe" },
+      implementado: {
+        label: "Implementado / Resuelto",
+        color: "#065f46",
+        bg: "#d1fae5",
+      },
+      descartado: { label: "Descartado", color: "#475569", bg: "#f1f5f9" },
+    };
+
+    const tableRows = list
+      .map((o, idx) => {
+        const dateStr = new Date(o.created_at).toLocaleString("es-BO", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        const stat = statusLabels[o.status] || {
+          label: o.status,
+          color: "#334155",
+          bg: "#f8fafc",
+        };
+        const safeDesc = (o.description || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\n/g, "<br/>");
+        const safeTitle = (o.title || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const safeCategory = (o.category || "General")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+        const safeNotes = o.admin_notes
+          ? `<div style="margin-top: 6pt; padding: 5pt 8pt; background-color: #f3e8ff; border-left: 3pt solid #9333ea; font-size: 8.5pt; color: #581c87;">
+               <strong>Nota SuperAdmin:</strong> ${o.admin_notes
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/\n/g, "<br/>")}
+             </div>`
+          : "";
+
+        return `
+          <tr style="border-bottom: 1pt solid #cbd5e1; ${
+            idx % 2 === 1 ? "background-color: #f8fafc;" : "background-color: #ffffff;"
+          }">
+            <td style="padding: 8pt; font-weight: bold; color: #64748b; text-align: center; width: 30pt; vertical-align: top;">${
+              idx + 1
+            }</td>
+            <td style="padding: 8pt; white-space: nowrap; font-size: 8.5pt; color: #334155; width: 85pt; vertical-align: top;">${dateStr}</td>
+            <td style="padding: 8pt; font-size: 8.5pt; width: 80pt; vertical-align: top;">
+              <span style="display: inline-block; padding: 2pt 6pt; border-radius: 3pt; background-color: #ffedd5; color: #9a3412; font-weight: bold; font-size: 8pt;">
+                ${safeCategory}
+              </span>
+            </td>
+            <td style="padding: 8pt; vertical-align: top;">
+              <div style="font-weight: bold; font-size: 10pt; color: #0f172a; margin-bottom: 4pt;">${safeTitle}</div>
+              <div style="font-size: 9pt; color: #334155; line-height: 1.5; white-space: normal;">${safeDesc}</div>
+              ${safeNotes}
+            </td>
+            <td style="padding: 8pt; font-size: 8.5pt; color: #334155; width: 90pt; vertical-align: top;">
+              <div style="font-weight: 600; color: #0f172a;">${o.user_name || "Usuario"}</div>
+              <div style="color: #64748b; font-size: 8pt; text-transform: uppercase;">${o.user_role || "admin"}</div>
+              <div style="color: #94a3b8; font-size: 7.5pt; font-family: monospace; margin-top: 2pt;">${o.route || "/"}</div>
+            </td>
+            <td style="padding: 8pt; text-align: center; width: 85pt; vertical-align: top;">
+              <span style="display: inline-block; padding: 3pt 7pt; border-radius: 4pt; font-size: 8pt; font-weight: bold; color: ${
+                stat.color
+              }; background-color: ${stat.bg}; border: 1pt solid ${stat.color}40;">
+                ${stat.label}
+              </span>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    const wordHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head>
+        <meta charset='utf-8'>
+        <title>Reporte de Observaciones - INCEGUA ERP</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
+        <style>
+          @page {
+            size: A4 landscape;
+            margin: 1.8cm 1.5cm 1.8cm 1.5cm;
+            mso-header-margin: 1cm;
+            mso-footer-margin: 1cm;
+          }
+          body {
+            font-family: 'Calibri', 'Segoe UI', Arial, sans-serif;
+            color: #1e293b;
+            font-size: 10pt;
+            line-height: 1.4;
+          }
+          h1 {
+            color: #c85a32;
+            font-size: 18pt;
+            margin: 0 0 4pt 0;
+            font-weight: bold;
+          }
+          .subtitle {
+            font-size: 10.5pt;
+            color: #475569;
+            margin: 0 0 14pt 0;
+          }
+          .meta-table {
+            width: 100%;
+            margin-bottom: 16pt;
+            border: 1pt solid #cbd5e1;
+            background-color: #f8fafc;
+            border-collapse: collapse;
+          }
+          .meta-table td {
+            padding: 8pt 12pt;
+            font-size: 9pt;
+            border: 1pt solid #e2e8f0;
+          }
+          .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1pt solid #cbd5e1;
+          }
+          .data-table th {
+            background-color: #c85a32;
+            color: #ffffff;
+            font-size: 9pt;
+            font-weight: bold;
+            text-align: left;
+            padding: 9pt 8pt;
+            border: 1pt solid #9a3412;
+          }
+          .footer-note {
+            margin-top: 25pt;
+            font-size: 8.5pt;
+            color: #64748b;
+            text-align: center;
+            border-top: 1pt solid #e2e8f0;
+            padding-top: 8pt;
+          }
+        </style>
+      </head>
+      <body>
+        <table style="width: 100%; margin-bottom: 10pt;">
+          <tr>
+            <td style="vertical-align: middle;">
+              <h1>INCEGUA S.R.L. &mdash; ERP Industrial</h1>
+              <div class="subtitle">Reporte de Observaciones, Ajustes y Solicitudes de Mejora</div>
+            </td>
+            <td style="text-align: right; vertical-align: middle;">
+              <div style="font-size: 9pt; color: #64748b;">Documento Oficial de Control</div>
+              <div style="font-size: 11pt; font-weight: bold; color: #c85a32;">F&aacute;brica de Ladrillos</div>
+            </td>
+          </tr>
+        </table>
+
+        <table class="meta-table">
+          <tr>
+            <td style="width: 33%;"><strong>Fecha de Emisión:</strong><br/>${currentDate}</td>
+            <td style="width: 33%;"><strong>Total de Registros:</strong><br/>${list.length} observaciones registradas</td>
+            <td style="width: 34%;"><strong>Emitido por:</strong><br/>SuperAdmin (Darinka Arias)</td>
+          </tr>
+          <tr>
+            <td colspan="3" style="color: #475569; font-size: 8.5pt; background-color: #f1f5f9;">
+              Este documento contiene las observaciones anotadas por el cliente y administradores para los ajustes y mejoras del sistema ERP.
+            </td>
+          </tr>
+        </table>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width: 30pt; text-align: center;">#</th>
+              <th style="width: 85pt;">Fecha</th>
+              <th style="width: 80pt;">Tipo</th>
+              <th>Título y Detalle de la Observación</th>
+              <th style="width: 90pt;">Usuario / Módulo</th>
+              <th style="width: 85pt; text-align: center;">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              tableRows ||
+              '<tr><td colspan="6" style="padding: 20pt; text-align: center; color: #94a3b8;">No se han registrado observaciones aún.</td></tr>'
+            }
+          </tbody>
+        </table>
+
+        <div class="footer-note">
+          Sistema de Gestión y Operaciones &bull; INCEGUA S.R.L. &bull; Reporte exportado en formato Microsoft Word (.doc)
+        </div>
+      </body>
+      </html>
+    `;
+
+    return new Blob(["\uFEFF", wordHtml], {
+      type: "application/msword;charset=utf-8;",
+    });
+  }
 }
