@@ -1,4 +1,4 @@
-import { UserRole } from "@/types/database.types";
+import type { UserRole } from "@/types/database.types";
 
 export interface SystemSubModule {
   id: string;

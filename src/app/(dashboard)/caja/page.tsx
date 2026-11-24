@@ -221,8 +221,20 @@ export default function CajaPage() {
     let countAnticipos = 0;
     let totalOtros = 0;
     let countOtros = 0;
+    let totalEfectivoNeto = 0;
+    let totalBancos = 0;
+    let totalCredito = 0;
 
     chronologicalEntries.forEach((item) => {
+      const descLower = (item.description || "").toLowerCase();
+      if (descLower.includes("transferencia") || descLower.includes("banco") || descLower.includes("qr")) {
+        totalBancos += item.amount;
+      } else if (descLower.includes("credito") || descLower.includes("crédito")) {
+        totalCredito += item.amount;
+      } else {
+        totalEfectivoNeto += item.amount;
+      }
+
       if (item.meta.group === "venta") {
         totalVentas += item.amount;
         countVentas++;
@@ -247,6 +259,11 @@ export default function CajaPage() {
       salarios: { total: totalSalarios, count: countSalarios },
       anticipos: { total: totalAnticipos, count: countAnticipos },
       otros: { total: totalOtros, count: countOtros },
+      canales: {
+        efectivoNeto: totalEfectivoNeto,
+        bancos: totalBancos,
+        credito: totalCredito,
+      },
     };
   }, [chronologicalEntries]);
 
@@ -286,7 +303,20 @@ export default function CajaPage() {
             <h2 className="text-3xl sm:text-4xl font-extrabold mt-1 tracking-tight">
               Bs. {runningBalance.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
             </h2>
-            <p className="text-xs text-slate-300 mt-1 max-w-xl">
+            <div className="flex flex-wrap items-center gap-3 mt-2 text-xs">
+              <span className="px-2.5 py-1 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 font-semibold">
+                Efectivo en Planta: Bs. {metrics.canales.efectivoNeto.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+              </span>
+              <span className="px-2.5 py-1 rounded-md bg-sky-500/15 text-sky-300 border border-sky-500/25 font-semibold">
+                Bancos / Transferencias: Bs. {metrics.canales.bancos.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+              </span>
+              {metrics.canales.credito > 0 && (
+                <span className="px-2.5 py-1 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/25 font-semibold">
+                  Crédito / CxC: Bs. {metrics.canales.credito.toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-300 mt-2 max-w-xl">
               Flujo oficial de caja: ventas cobradas, compras de materia prima, leña, combustible, pagos de planillas y anticipos.
             </p>
           </div>

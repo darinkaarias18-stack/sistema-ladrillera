@@ -891,8 +891,8 @@ class MemoryStore {
       severity: "low",
       module: "ventas",
       entity_id: newCust.id,
-      description: `Registro de nuevo cliente: ${newCust.name} (NIT/CI: ${(newCust as any).tax_id || "S/N"}) - Tel: ${newCust.phone || "S/N"}`,
-      details: newCust,
+      description: `Registro de nuevo cliente: ${newCust.name} (NIT/CI: ${newCust.tax_id || "S/N"}) - Tel: ${newCust.phone || "S/N"}`,
+      details: { ...newCust },
     });
 
     return newCust;
@@ -1542,7 +1542,7 @@ class MemoryStore {
     supabaseSync.pushChange("employee_advances", "insert", newAdv, newAdv.id);
 
     // Sumar a personal_advances en el detalle de planilla activo del empleado
-    let detail = this.payrollDetails.find(
+    const detail = this.payrollDetails.find(
       (pd) => pd.employee_id === advance.employee_id && 
               (!advance.period_id || pd.period_id === advance.period_id) && 
               !pd.paid

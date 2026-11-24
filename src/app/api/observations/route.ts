@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { SystemObservation } from "@/lib/observations-manager";
 import { createClient } from "@supabase/supabase-js";
+import { requireAuthenticatedSession, requireRoles } from "@/lib/auth-guard";
 
 // Supabase client con service role si existe para operaciones seguras en servidor
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -18,6 +19,11 @@ const supabase =
 let serverObservations: SystemObservation[] = [];
 
 export async function GET() {
+  const auth = await requireRoles(["superadmin", "admin"], "consultar observaciones del sistema");
+  if (!auth.authorized) {
+    return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+  }
+
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -46,23 +52,37 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAuthenticatedSession();
+    if (!auth.authorized) {
+      return NextResponse.json({ success: false, error: auth.error }, { status: auth.status });
+    }
+
     const body = await request.json();
     const { action, observation, id, status, admin_notes, resolved_at } = body;
 
     if (action === "create" && observation) {
-      serverObservations.unshift(observation);
+      // Forzar identidad verificada de la sesión del servidor para evitar suplantación
+      const verifiedObservation: SystemObservation = {
+        ...observation,
+        user_id: auth.session.user!.id,
+        user_name: auth.session.user!.fullName,
+        user_email: auth.session.user!.email,
+        user_role: auth.session.role,
+      };
+      serverObservations.unshift(verifiedObservation);
 
       if (supabase) {
         try {
           await supabase.from("system_observations").insert([
             {
-              user_name: observation.user_name,
-              user_email: observation.user_email,
-              user_role: observation.user_role,
-              route: observation.route,
-              category: observation.category,
-              title: observation.title,
-              description: observation.description,
+              user_id: verifiedObservation.user_id,
+              user_name: verifiedObservation.user_name,
+              user_email: verifiedObservation.user_email,
+              user_role: verifiedObservation.user_role,
+              route: verifiedObservation.route,
+              category: verifiedObservation.category,
+              title: verifiedObservation.title,
+              description: verifiedObservation.description,
             },
           ]);
         } catch (e) {
@@ -70,10 +90,16 @@ export async function POST(request: Request) {
         }
       }
 
-      return NextResponse.json({ success: true, observation });
+      return NextResponse.json({ success: true, observation: verifiedObservation });
     }
 
     if (action === "update" && id) {
+      if (auth.session.role !== "superadmin") {
+        return NextResponse.json(
+          { success: false, error: "Acceso denegado: solo el Super Administrador puede actualizar observaciones." },
+          { status: 403 }
+        );
+      }
       const target = serverObservations.find((o) => o.id === id);
       if (target) {
         if (status) target.status = status;
@@ -98,6 +124,12 @@ export async function POST(request: Request) {
     }
 
     if (action === "delete" && id) {
+      if (auth.session.role !== "superadmin") {
+        return NextResponse.json(
+          { success: false, error: "Acceso denegado: solo el Super Administrador puede eliminar observaciones." },
+          { status: 403 }
+        );
+      }
       serverObservations = serverObservations.filter((o) => o.id !== id);
 
       if (supabase) {
@@ -110,7 +142,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: false, error: "Acción no reconocida" }, { status: 400 });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Error interno";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

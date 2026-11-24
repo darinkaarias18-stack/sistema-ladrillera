@@ -2,25 +2,27 @@
 
 import { Header } from "@/components/layout/header";
 import { store } from "@/lib/store";
+import { getTodayDateString } from "@/lib/dates";
+import {
+  ProductionBatch,
+  InventoryStock,
+  BrickType,
+  Employee,
+  Order,
+  HornoCycle,
+} from "@/types/database.types";
 import { useEffect, useState, useMemo } from "react";
 import {
   Factory,
   Flame,
-  Layers,
   Boxes,
   TrendingUp,
   Award,
   AlertTriangle,
   CheckCircle2,
-  Clock,
-  ArrowUpRight,
-  SunMedium,
-  Zap,
-  ThermometerSun,
-  ShieldCheck,
-  ChevronRight,
   PackageCheck,
-  Filter
+  Truck,
+  FlameKindling,
 } from "lucide-react";
 import {
   BarChart,
@@ -30,28 +32,111 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend
 } from "recharts";
 
 export default function DashboardPage() {
-  const [batches, setBatches] = useState<any[]>([]);
-  const [stock, setStock] = useState<any[]>([]);
-  const [brickTypes, setBrickTypes] = useState<any[]>([]);
-  const [employees, setEmployees] = useState<any[]>([]);
-  const [sales, setSales] = useState<any[]>([]);
+  const [batches, setBatches] = useState<ProductionBatch[]>([]);
+  const [stock, setStock] = useState<InventoryStock[]>([]);
+  const [brickTypes, setBrickTypes] = useState<BrickType[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [hornoCycles, setHornoCycles] = useState<HornoCycle[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
 
-  useEffect(() => {
+  const loadDashboardData = () => {
     setBatches(store.getProductionBatches());
     setStock(store.getInventoryStock());
     setBrickTypes(store.getBrickTypes());
     setEmployees(store.getEmployees());
-    setSales(store.getSales());
+    setOrders(store.getOrders());
+    setHornoCycles(store.getHornoCycles());
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsMounted(true);
+      loadDashboardData();
+    }, 0);
+
+    const events = [
+      "erp_sync_completed",
+      "erp_batches_updated",
+      "erp_inventory_updated",
+      "erp_orders_updated",
+    ];
+    events.forEach((ev) => window.addEventListener(ev, loadDashboardData));
+    return () => {
+      clearTimeout(timer);
+      events.forEach((ev) => window.removeEventListener(ev, loadDashboardData));
+    };
   }, []);
 
-  // 1. MÉTRICAS CLAVE DE PRODUCCIÓN
-  const totalProduced = useMemo(() => {
-    return batches.reduce((sum, b) => sum + (b.quantity_produced || 0), 0);
-  }, [batches]);
+  // 1. MÉTRICAS CLAVE DE PRODUCCIÓN & HORNOS
+  const currentMonthPrefix = useMemo(() => getTodayDateString().slice(0, 7), []);
+
+  const kilnMetrics = useMemo(() => {
+    const finalizedAll = hornoCycles.filter((c) => c.status === "finalizado");
+    const finalizedMonth = finalizedAll.filter((c) =>
+      (c.fecha_salida || c.fecha_ingreso || "").startsWith(currentMonthPrefix)
+    );
+    const targetCycles = finalizedMonth.length > 0 ? finalizedMonth : finalizedAll;
+
+    let ingresado = 0;
+    let sanoSalido = 0;
+    let merma = 0;
+
+    targetCycles.forEach((c) => {
+      const ing = Number(c.cantidad_ingreso || 0);
+      const sanos =
+        Number(c.cantidad_salida_primera || 0) + Number(c.cantidad_salida_segunda || 0);
+      const cycleMerma =
+        c.cantidad_merma !== undefined ? Number(c.cantidad_merma) : Math.max(0, ing - sanos);
+      ingresado += ing;
+      sanoSalido += sanos;
+      merma += cycleMerma;
+    });
+
+    const mermaPct = ingresado > 0 ? ((ingresado - sanoSalido) / ingresado) * 100 : 0;
+
+    return {
+      ingresado,
+      sanoSalido,
+      merma,
+      mermaPct: Number(mermaPct.toFixed(1)),
+      cyclesCount: targetCycles.length,
+    };
+  }, [hornoCycles, currentMonthPrefix]);
+
+  const monthlyMolding = useMemo(() => {
+    const currentMonthBatches = batches.filter((b) =>
+      (b.production_date || "").startsWith(currentMonthPrefix)
+    );
+    if (currentMonthBatches.length > 0) {
+      return {
+        total: currentMonthBatches.reduce((sum, b) => sum + (b.quantity_produced || 0), 0),
+        count: currentMonthBatches.length,
+        periodLabel: "Mes actual",
+      };
+    }
+    if (batches.length === 0) {
+      return { total: 0, count: 0, periodLabel: "Sin registros" };
+    }
+    const latestMonth = batches.reduce(
+      (max, b) => {
+        const m = (b.production_date || "").slice(0, 7);
+        return m > max ? m : max;
+      },
+      (batches[0].production_date || "").slice(0, 7)
+    );
+    const latestBatches = batches.filter((b) =>
+      (b.production_date || "").startsWith(latestMonth)
+    );
+    return {
+      total: latestBatches.reduce((sum, b) => sum + (b.quantity_produced || 0), 0),
+      count: latestBatches.length,
+      periodLabel: `Último mes (${latestMonth})`,
+    };
+  }, [batches, currentMonthPrefix]);
 
   const stockPatio = useMemo(() => {
     return stock
@@ -71,15 +156,47 @@ export default function DashboardPage() {
       .reduce((sum, s) => sum + s.quantity, 0);
   }, [stock]);
 
-  const totalStockGlobal = stockPatio + stockHorno + stockBodega;
-
-  // Lotes frescos verde (del día de hoy)
-  const todayDateStr = "2026-10-17";
+  // Lotes frescos verde (del día de hoy o último turno registrado)
   const producedToday = useMemo(() => {
+    const today = getTodayDateString();
+    const todayBatches = batches.filter((b) => b.production_date === today);
+    if (todayBatches.length > 0) {
+      return todayBatches.reduce((sum, b) => sum + (b.quantity_produced || 0), 0);
+    }
+    if (batches.length === 0) return 0;
+    const latestDate = batches.reduce(
+      (max, b) => (b.production_date > max ? b.production_date : max),
+      batches[0].production_date
+    );
     return batches
-      .filter((b) => b.production_date === todayDateStr)
+      .filter((b) => b.production_date === latestDate)
       .reduce((sum, b) => sum + (b.quantity_produced || 0), 0);
   }, [batches]);
+
+  // Cuadre exacto de las 4 etapas: Vaciado/Verde + Patio Secado + Hornos + Bodega Terminado
+  const stockEnProceso = producedToday + stockPatio + stockHorno;
+  const totalStockGlobal = stockEnProceso + stockBodega;
+
+  // Cruce con Pedidos activos pendientes de despacho
+  const orderMetrics = useMemo(() => {
+    const pendingOrders = orders.filter(
+      (o) =>
+        o.status !== "cancelado" &&
+        o.delivery_status !== "entregado" &&
+        o.delivery_status !== "cancelado"
+    );
+    const committedUnits = pendingOrders.reduce(
+      (sum, o) =>
+        sum + (o.items || []).reduce((itemSum, it) => itemSum + (it.quantity || 0), 0),
+      0
+    );
+    const availableReal = stockBodega - committedUnits;
+    return {
+      pendingCount: pendingOrders.length,
+      committedUnits,
+      availableReal,
+    };
+  }, [orders, stockBodega]);
 
   // 2. PRODUCCIÓN POR TIPO DE LADRILLO
   const productionChartData = useMemo(() => {
@@ -202,25 +319,27 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md p-3.5 rounded-xl border border-white/10 text-center">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-orange-300 block">Vaciado de Hoy</span>
-              <span className="text-2xl font-black text-white">{producedToday.toLocaleString()}</span>
+              <span className="text-2xl font-black text-white">{producedToday.toLocaleString("es-BO")}</span>
               <span className="text-[10px] text-slate-300 block">unid. moldeadas</span>
             </div>
             <div className="w-px h-10 bg-white/20 mx-1" />
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-300 block">Stock Total Planta</span>
-              <span className="text-2xl font-black text-white">{totalStockGlobal.toLocaleString()}</span>
-              <span className="text-[10px] text-slate-300 block">en proceso y listo</span>
+              <span className="text-2xl font-black text-white">{totalStockGlobal.toLocaleString("es-BO")}</span>
+              <span className="text-[10px] text-slate-300 block">
+                En proceso ({stockEnProceso.toLocaleString("es-BO")}) + listo en bodega ({stockBodega.toLocaleString("es-BO")})
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 1. TOP CARDS: 4 INDICADORES CLAVE DE PRODUCCIÓN */}
+        {/* 1. TOP CARDS: 4 INDICADORES CLAVE DE PRODUCCIÓN Y OPERACIÓN */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* KPI 1: Producción Total Vaciada */}
+          {/* KPI 1: Vaciado del Mes */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs relative overflow-hidden group hover:border-orange-500/40 transition">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Producción del Mes
+                Vaciado del Mes
               </span>
               <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
                 <Factory className="w-5 h-5" />
@@ -228,79 +347,152 @@ export default function DashboardPage() {
             </div>
             <div className="mt-3">
               <span className="text-3xl font-black text-slate-900 tracking-tight">
-                {totalProduced.toLocaleString()}
+                {monthlyMolding.total.toLocaleString("es-BO")}
               </span>
               <span className="text-xs font-medium text-slate-500 ml-1.5">unidades</span>
             </div>
             <div className="mt-2.5 flex items-center text-xs text-emerald-600 font-semibold gap-1">
               <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18.5% vs meta mensual</span>
+              <span>{monthlyMolding.periodLabel} • {monthlyMolding.count} lotes</span>
             </div>
           </div>
 
-          {/* KPI 2: Hornos en Quema */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs relative overflow-hidden group hover:border-amber-500/40 transition">
+          {/* KPI 2: Disponible Real en Bodega */}
+          <div
+            className={`bg-white rounded-2xl p-5 border shadow-xs relative overflow-hidden group transition ${
+              orderMetrics.availableReal < 0
+                ? "border-rose-300 hover:border-rose-500/60"
+                : orderMetrics.availableReal <= 5000
+                ? "border-amber-300 hover:border-amber-500/60"
+                : "border-slate-200/80 hover:border-emerald-500/40"
+            }`}
+          >
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                En Quema (Hornos)
-              </span>
-              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center">
-                <Flame className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <span className="text-3xl font-black text-amber-900 tracking-tight">
-                {stockHorno.toLocaleString()}
-              </span>
-              <span className="text-xs font-medium text-slate-500 ml-1.5">unidades</span>
-            </div>
-            <div className="mt-2.5 flex items-center text-xs text-amber-700 font-semibold gap-1">
-              <ThermometerSun className="w-3.5 h-3.5" />
-              <span>3 hornos en cocción activa</span>
-            </div>
-          </div>
-
-          {/* KPI 3: Patio de Secado */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs relative overflow-hidden group hover:border-yellow-500/40 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Patio de Secado
-              </span>
-              <div className="w-9 h-9 rounded-xl bg-yellow-100 text-yellow-700 flex items-center justify-center">
-                <SunMedium className="w-5 h-5" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <span className="text-3xl font-black text-slate-900 tracking-tight">
-                {stockPatio.toLocaleString()}
-              </span>
-              <span className="text-xs font-medium text-slate-500 ml-1.5">unidades</span>
-            </div>
-            <div className="mt-2.5 flex items-center text-xs text-slate-500 font-medium gap-1">
-              <Clock className="w-3.5 h-3.5 text-yellow-600" />
-              <span>Ladrillo verde en deshidratación</span>
-            </div>
-          </div>
-
-          {/* KPI 4: Stock Listo Bodega */}
-          <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-xs relative overflow-hidden group hover:border-emerald-500/40 transition">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Bodega Terminado
+                Disponible Real en Bodega
               </span>
               <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
                 <PackageCheck className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3">
-              <span className="text-3xl font-black text-emerald-700 tracking-tight">
-                {stockBodega.toLocaleString()}
+              <span
+                className={`text-3xl font-black tracking-tight ${
+                  orderMetrics.availableReal < 0
+                    ? "text-rose-600"
+                    : orderMetrics.availableReal <= 5000
+                    ? "text-amber-700"
+                    : "text-emerald-700"
+                }`}
+              >
+                {orderMetrics.availableReal.toLocaleString("es-BO")}
               </span>
               <span className="text-xs font-medium text-slate-500 ml-1.5">unidades</span>
             </div>
-            <div className="mt-2.5 flex items-center text-xs text-emerald-600 font-semibold gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Listo para despacho inmediato</span>
+            <div
+              className={`mt-2.5 flex items-center text-xs font-semibold gap-1 ${
+                orderMetrics.availableReal < 0
+                  ? "text-rose-600"
+                  : orderMetrics.availableReal <= 5000
+                  ? "text-amber-700"
+                  : "text-emerald-600"
+              }`}
+            >
+              {orderMetrics.availableReal <= 5000 ? (
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>
+                Físico: {stockBodega.toLocaleString("es-BO")} • Comprometido: {orderMetrics.committedUnits.toLocaleString("es-BO")}
+              </span>
+            </div>
+          </div>
+
+          {/* KPI 3: Tasa de Merma / Rotura */}
+          <div
+            className={`bg-white rounded-2xl p-5 border shadow-xs relative overflow-hidden group transition ${
+              kilnMetrics.mermaPct > 5
+                ? "border-rose-300 hover:border-rose-500/60"
+                : "border-slate-200/80 hover:border-emerald-500/40"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Tasa de Merma / Rotura
+              </span>
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                  kilnMetrics.mermaPct > 5
+                    ? "bg-rose-100 text-rose-600"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}
+              >
+                <FlameKindling className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span
+                className={`text-3xl font-black tracking-tight ${
+                  kilnMetrics.mermaPct > 5 ? "text-rose-600" : "text-emerald-700"
+                }`}
+              >
+                {kilnMetrics.mermaPct}%
+              </span>
+              <span className="text-xs font-medium text-slate-500 ml-1.5">del mes</span>
+            </div>
+            <div
+              className={`mt-2.5 flex items-center text-xs font-semibold gap-1 ${
+                kilnMetrics.mermaPct > 5 ? "text-rose-600" : "text-emerald-600"
+              }`}
+            >
+              {kilnMetrics.mermaPct > 5 ? (
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+              )}
+              <span>
+                {kilnMetrics.merma.toLocaleString("es-BO")} unid. rotas ({kilnMetrics.mermaPct > 5 ? "> 5%" : "≤ 5% meta"})
+              </span>
+            </div>
+          </div>
+
+          {/* KPI 4: Pedidos por Despachar */}
+          <div
+            className={`bg-white rounded-2xl p-5 border shadow-xs relative overflow-hidden group transition ${
+              orderMetrics.committedUnits > stockBodega
+                ? "border-amber-300 hover:border-amber-500/60"
+                : "border-slate-200/80 hover:border-amber-500/40"
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Pedidos por Despachar
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                <Truck className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <span className="text-3xl font-black text-slate-900 tracking-tight">
+                {orderMetrics.committedUnits.toLocaleString("es-BO")}
+              </span>
+              <span className="text-xs font-medium text-slate-500 ml-1.5">unidades</span>
+            </div>
+            <div
+              className={`mt-2.5 flex items-center text-xs font-semibold gap-1 ${
+                orderMetrics.committedUnits > stockBodega ? "text-amber-700" : "text-slate-600"
+              }`}
+            >
+              {orderMetrics.committedUnits > stockBodega ? (
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+              ) : (
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-600" />
+              )}
+              <span>
+                {orderMetrics.pendingCount} {orderMetrics.pendingCount === 1 ? "pedido activo" : "pedidos activos"}
+                {orderMetrics.committedUnits > stockBodega ? " • Supera stock libre" : " • Cubierto en bodega"}
+              </span>
             </div>
           </div>
         </div>
@@ -313,7 +505,7 @@ export default function DashboardPage() {
               <p className="text-xs text-slate-500">Transición de la arcilla desde el vaciado verde hasta el producto terminado</p>
             </div>
             <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full">
-              Capacidad Total: <strong>{totalStockGlobal.toLocaleString()} unid.</strong>
+              Stock Total en Planta: <strong>{totalStockGlobal.toLocaleString("es-BO")} unid.</strong>
             </span>
           </div>
 
@@ -327,11 +519,14 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="text-xl font-black text-orange-950 mt-1">
-                {producedToday.toLocaleString()} unid.
+                {producedToday.toLocaleString("es-BO")} unid.
               </div>
               <p className="text-[11px] text-orange-800/80 mt-1">Moldeado del día en tendales</p>
               <div className="w-full bg-orange-200 h-1.5 rounded-full mt-3 overflow-hidden">
-                <div className="bg-orange-500 h-full rounded-full" style={{ width: "100%" }} />
+                <div
+                  className="bg-orange-500 h-full rounded-full"
+                  style={{ width: `${Math.round((producedToday / (totalStockGlobal || 1)) * 100)}%` }}
+                />
               </div>
             </div>
 
@@ -344,7 +539,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="text-xl font-black text-yellow-950 mt-1">
-                {stockPatio.toLocaleString()} unid.
+                {stockPatio.toLocaleString("es-BO")} unid.
               </div>
               <p className="text-[11px] text-yellow-800/80 mt-1">Perdiendo humedad ambiental</p>
               <div className="w-full bg-yellow-200 h-1.5 rounded-full mt-3 overflow-hidden">
@@ -364,7 +559,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="text-xl font-black text-amber-950 mt-1">
-                {stockHorno.toLocaleString()} unid.
+                {stockHorno.toLocaleString("es-BO")} unid.
               </div>
               <p className="text-[11px] text-amber-800/80 mt-1">Cocción y sinterizado térmico</p>
               <div className="w-full bg-amber-200 h-1.5 rounded-full mt-3 overflow-hidden">
@@ -384,7 +579,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="text-xl font-black text-emerald-950 mt-1">
-                {stockBodega.toLocaleString()} unid.
+                {stockBodega.toLocaleString("es-BO")} unid.
               </div>
               <p className="text-[11px] text-emerald-800/80 mt-1">Ladrillo frío seleccionado</p>
               <div className="w-full bg-emerald-200 h-1.5 rounded-full mt-3 overflow-hidden">
@@ -419,21 +614,23 @@ export default function DashboardPage() {
             </div>
 
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dailyProductionData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis dataKey="dia" stroke="#64748B" fontSize={11} />
-                  <YAxis stroke="#64748B" fontSize={11} />
-                  <Tooltip
-                    formatter={(val: any, name: any) => [
-                      `${Number(val).toLocaleString()} unid.`,
-                      name === "manana" ? "Turno Mañana" : "Turno Tarde",
-                    ]}
-                  />
-                  <Bar dataKey="manana" name="manana" fill="#EA580C" radius={[4, 4, 0, 0]} stackId="turnos" />
-                  <Bar dataKey="tarde" name="tarde" fill="#FBBF24" radius={[4, 4, 0, 0]} stackId="turnos" />
-                </BarChart>
-              </ResponsiveContainer>
+              {isMounted && (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
+                  <BarChart data={dailyProductionData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                    <XAxis dataKey="dia" stroke="#64748B" fontSize={11} />
+                    <YAxis stroke="#64748B" fontSize={11} />
+                    <Tooltip
+                      formatter={(val, name) => [
+                        `${Number(val).toLocaleString("es-BO")} unid.`,
+                        name === "manana" ? "Turno Mañana" : "Turno Tarde",
+                      ]}
+                    />
+                    <Bar dataKey="manana" name="manana" fill="#EA580C" radius={[4, 4, 0, 0]} stackId="turnos" />
+                    <Bar dataKey="tarde" name="tarde" fill="#FBBF24" radius={[4, 4, 0, 0]} stackId="turnos" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -448,17 +645,19 @@ export default function DashboardPage() {
             </div>
 
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart layout="vertical" data={productionChartData.slice(0, 6)}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
-                  <XAxis type="number" stroke="#64748B" fontSize={11} />
-                  <YAxis dataKey="name" type="category" width={120} stroke="#64748B" fontSize={11} />
-                  <Tooltip
-                    formatter={(val: any) => [`${Number(val).toLocaleString()} unidades`, "Producido"]}
-                  />
-                  <Bar dataKey="cantidad" fill="#C85A32" radius={[0, 6, 6, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {isMounted && (
+                <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={200}>
+                  <BarChart layout="vertical" data={productionChartData.slice(0, 6)}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                    <XAxis type="number" stroke="#64748B" fontSize={11} />
+                    <YAxis dataKey="name" type="category" width={120} stroke="#64748B" fontSize={11} />
+                    <Tooltip
+                      formatter={(val) => [`${Number(val).toLocaleString("es-BO")} unidades`, "Producido"]}
+                    />
+                    <Bar dataKey="cantidad" fill="#C85A32" radius={[0, 6, 6, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
         </div>
@@ -485,8 +684,8 @@ export default function DashboardPage() {
                         {h.fase}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-600 font-semibold" suppressHydrationWarning>
-                      <strong className="text-slate-900">{h.enCoccion.toLocaleString()}</strong> / {h.capacidad.toLocaleString()} unid. ({h.porcentaje}%)
+                    <div className="text-xs text-slate-600 font-semibold">
+                      <strong className="text-slate-900">{h.enCoccion.toLocaleString("es-BO")}</strong> / {h.capacidad.toLocaleString("es-BO")} unid. ({h.porcentaje}%)
                     </div>
                   </div>
 
@@ -505,7 +704,7 @@ export default function DashboardPage() {
 
                   <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
                     <span>Combustible: <strong className="text-slate-700">{h.combustible}</strong></span>
-                    <span>Capacidad disponible: <strong>{(h.capacidad - h.enCoccion).toLocaleString()} unid.</strong></span>
+                    <span>Capacidad disponible: <strong>{(h.capacidad - h.enCoccion).toLocaleString("es-BO")} unid.</strong></span>
                   </div>
                 </div>
               ))}
@@ -536,7 +735,7 @@ export default function DashboardPage() {
                         )}
                       </div>
                       <span className="text-xs font-mono font-bold text-orange-700">
-                        {op.totalUnits.toLocaleString()} unid.
+                        {op.totalUnits.toLocaleString("es-BO")} unid.
                       </span>
                     </div>
 
@@ -548,7 +747,7 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1.5">
-                      <span>Promedio por turno: <strong>{op.avgPerBatch.toLocaleString()} u</strong></span>
+                      <span>Promedio por turno: <strong>{op.avgPerBatch.toLocaleString("es-BO")} u</strong></span>
                       <span className="font-bold text-emerald-700">{op.targetPct}% cumplimiento</span>
                     </div>
                   </div>
@@ -599,7 +798,7 @@ export default function DashboardPage() {
                     <td className="p-3 capitalize text-slate-600 font-semibold">{b.shift}</td>
                     <td className="p-3 text-slate-600 font-medium">{b.horno || "Patio Principal"}</td>
                     <td className="p-3 text-right font-mono font-black text-slate-900 text-sm">
-                      {b.quantity_produced.toLocaleString()} unid.
+                      {b.quantity_produced.toLocaleString("es-BO")} unid.
                     </td>
                     <td className="p-3 text-center">
                       <span

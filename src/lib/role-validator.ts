@@ -262,10 +262,19 @@ export async function validateServerActionRole(
 }> {
   try {
     const session = await getCurrentUserSession();
+    if (!session.user || !session.user.id) {
+      return {
+        authorized: false,
+        role: session.role,
+        userId: null,
+        error: "No autorizado: no existe una sesión activa válida.",
+      };
+    }
+
     const userRole = session.role;
 
     if (userRole === "superadmin") {
-      return { authorized: true, role: userRole, userId: session.user?.id || null };
+      return { authorized: true, role: userRole, userId: session.user.id };
     }
 
     if (!allowedRoles.includes(userRole)) {
@@ -284,12 +293,13 @@ export async function validateServerActionRole(
       role: userRole,
       userId: session.user?.id || null,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Error desconocido";
     return {
       authorized: false,
       role: "produccion",
       userId: null,
-      error: `Error al validar sesión y permisos: ${err?.message || "Error desconocido"}`,
+      error: `Error al validar sesión y permisos: ${message}`,
     };
   }
 }
@@ -322,7 +332,17 @@ export class RoleValidatorAgent {
       "ventas",
     ];
 
-    const result = {} as any;
+    const result = {} as Record<
+      UserRole,
+      {
+        role: UserRole;
+        label: string;
+        allowedModulesCount: number;
+        modules: string[];
+        permissionsCount: number;
+        permissions: PermissionAction[];
+      }
+    >;
 
     roles.forEach((r) => {
       const modules = r === "superadmin" || r === "admin"
@@ -360,7 +380,7 @@ export class RoleValidatorAgent {
       "ventas",
     ];
 
-    const report = {} as any;
+    const report = {} as Record<UserRole, { allowed: boolean; reason: string }>;
 
     roles.forEach((role) => {
       const allowed = canAccessRoute(role, pathname);

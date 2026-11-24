@@ -17,9 +17,9 @@ export interface QueuedOperation {
   id: string;
   table: string;
   action: "insert" | "update" | "delete" | "upsert";
-  data?: any;
+  data?: unknown;
   recordId?: string;
-  match?: Record<string, any>;
+  match?: Record<string, unknown>;
   timestamp: number;
 }
 
@@ -32,7 +32,7 @@ class SupabaseSyncEngine {
   private counts: Record<string, number> = {};
   private listeners: Set<SyncListener> = new Set();
   private isSyncing = false;
-  private autoSyncIntervalId: any = null;
+  private autoSyncIntervalId: ReturnType<typeof setInterval> | null = null;
   private isInitialized = false;
 
   constructor() {
@@ -133,8 +133,9 @@ class SupabaseSyncEngine {
         }
       }
       return false;
-    } catch (err: any) {
-      console.warn("Could not flush sync queue, will retry later:", err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error de red";
+      console.warn("Could not flush sync queue, will retry later:", msg);
       return false;
     }
   }
@@ -196,9 +197,10 @@ class SupabaseSyncEngine {
       }
 
       return true;
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error al conectar con Supabase";
       console.error("Error pulling from Supabase:", err);
-      this.lastError = err.message || "Error al conectar con Supabase";
+      this.lastError = msg;
       this.status = typeof navigator !== "undefined" && !navigator.onLine ? "offline" : "error";
       return false;
     } finally {
@@ -214,9 +216,9 @@ class SupabaseSyncEngine {
   public async pushChange(
     table: string,
     action: "insert" | "update" | "delete" | "upsert",
-    data?: any,
+    data?: unknown,
     recordId?: string,
-    match?: Record<string, any>
+    match?: Record<string, unknown>
   ): Promise<boolean> {
     try {
       const res = await fetch("/api/sync", {
@@ -238,8 +240,9 @@ class SupabaseSyncEngine {
       } else {
         throw new Error(json.error || "Operación no completada en Supabase");
       }
-    } catch (err: any) {
-      console.warn(`[Sync] PUSH a ${table} falló, encolando para reintento:`, err.message);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Error de red";
+      console.warn(`[Sync] PUSH a ${table} falló, encolando para reintento:`, msg);
       this.queueOperation({ table, action, data, recordId, match });
       this.status = "error";
       this.lastError = `Pendiente de sincronizar: ${table}`;

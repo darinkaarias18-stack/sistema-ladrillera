@@ -28,12 +28,15 @@ export default function LoginPage() {
   const [isInactivityLogout, setIsInactivityLogout] = useState(false)
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("reason") === "inactivity") {
-        setIsInactivityLogout(true);
+    const timer = setTimeout(() => {
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("reason") === "inactivity") {
+          setIsInactivityLogout(true);
+        }
       }
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [])
 
   const emailInputRef = useRef<HTMLInputElement>(null)
@@ -72,41 +75,47 @@ export default function LoginPage() {
 
       // Registro de inicio de sesión exitoso en la auditoría inmutable
       if (data?.user) {
+        const isMaster = finalEmail.toLowerCase() === "darinka.arias18@gmail.com";
+        const resolvedRole = isMaster
+          ? "superadmin"
+          : (data.user.user_metadata?.role || "cajero");
+
         if (typeof window !== "undefined") {
           localStorage.setItem(
             "erp_current_user",
             JSON.stringify({
               id: data.user.id,
-              name: data.user.user_metadata?.full_name || email,
-              email: email,
-              role: data.user.user_metadata?.role || "superadmin",
+              name: data.user.user_metadata?.full_name || finalEmail,
+              email: finalEmail,
+              role: resolvedRole,
             })
           );
         }
 
         AuditLogger.log({
           user_id: data.user.id,
-          user_name: data.user.user_metadata?.full_name || email,
-          user_email: email,
-          user_role: data.user.user_metadata?.role || "superadmin",
+          user_name: data.user.user_metadata?.full_name || finalEmail,
+          user_email: finalEmail,
+          user_role: resolvedRole,
           action: "LOGIN_SUCCESS",
           severity: "low",
           module: "seguridad",
-          description: `Inicio de sesión autenticado correctamente para ${email}`,
+          description: `Inicio de sesión autenticado correctamente para ${finalEmail}`,
         })
       }
 
       // Refresh router to apply middleware and redirect
       router.push("/")
       router.refresh()
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errMessage = err instanceof Error ? err.message : "Credenciales incorrectas. Verifica tu correo y contraseña.";
       // Registro de alerta de seguridad ante fallos de login
       AuditLogger.logSecurityAlert(
         "medium",
         `Intento fallido de inicio de sesión para ${email || "correo no provisto"}`,
-        { email, error: err.message }
+        { email, error: errMessage }
       )
-      setError(err.message || "Credenciales incorrectas. Verifica tu correo y contraseña.")
+      setError(errMessage)
     } finally {
       setLoading(false)
     }

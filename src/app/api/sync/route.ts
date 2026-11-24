@@ -1,5 +1,80 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAuthenticatedSession } from "@/lib/auth-guard";
+import { canEditOrDelete, canPerformAction } from "@/lib/role-validator";
+import { UserRole } from "@/types/database.types";
+
+const ALLOWED_SYNC_TABLES = new Set([
+  "employees",
+  "brick_types",
+  "customers",
+  "production_batches",
+  "inventory_stock",
+  "inventory_movements",
+  "orders",
+  "order_items",
+  "sales",
+  "sale_items",
+  "payroll_periods",
+  "payroll_details",
+  "employee_advances",
+  "cash_ledger",
+  "employee_attendance",
+  "employee_settlements",
+  "horno_cycles",
+  "patio_despachos",
+  "city_discounts",
+]);
+
+function canMutateTable(role: UserRole, table: string, action: string): boolean {
+  if (!ALLOWED_SYNC_TABLES.has(table)) return false;
+  if (role === "superadmin") return true;
+  if (action === "delete" && !canEditOrDelete(role)) return false;
+
+  switch (table) {
+    case "employees":
+      return canPerformAction(role, "employees.manage");
+    case "payroll_periods":
+    case "payroll_details":
+    case "employee_advances":
+    case "employee_settlements":
+      return canPerformAction(role, "payroll.manage");
+    case "employee_attendance":
+      return canPerformAction(role, "employees.manage") || canPerformAction(role, "production.record");
+    case "brick_types":
+      return canPerformAction(role, "employees.manage") || canPerformAction(role, "production.record");
+    case "production_batches":
+      return canPerformAction(role, "production.record");
+    case "horno_cycles":
+      return canPerformAction(role, "kilns.manage") || canPerformAction(role, "production.record");
+    case "patio_despachos":
+      return canPerformAction(role, "deliveries.manage") || canPerformAction(role, "production.record") || canPerformAction(role, "sales.create");
+    case "city_discounts":
+      return canPerformAction(role, "employees.manage");
+    case "inventory_stock":
+    case "inventory_movements":
+      return (
+        canPerformAction(role, "inventory.manage") ||
+        canPerformAction(role, "production.record") ||
+        canPerformAction(role, "sales.create") ||
+        canPerformAction(role, "deliveries.manage")
+      );
+    case "customers":
+    case "orders":
+    case "order_items":
+    case "sales":
+    case "sale_items":
+      return canPerformAction(role, "sales.create") || canPerformAction(role, "deliveries.manage");
+    case "cash_ledger":
+      return (
+        canPerformAction(role, "cash.manage") ||
+        canPerformAction(role, "sales.create") ||
+        canPerformAction(role, "payroll.manage")
+      );
+    default:
+      return false;
+  }
+}
 
 function getAdminClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -12,9 +87,9 @@ function getAdminClient() {
   });
 }
 
-// Limpia campos que solo existen en el frontend o que son relaciones unidas (joins)
-function sanitizePayload(table: string, data: Record<string, any>): Record<string, any> {
-  const clean = { ...data };
+// Limpia únicamente relaciones unidas (joins) y columnas generadas automáticamente en PostgreSQL
+function sanitizePayload(table: string, data: Record<string, unknown>): Record<string, unknown> {
+  const clean: Record<string, unknown> = { ...data };
 
   // Eliminar referencias a objetos anidados / joins
   delete clean.brick_type;
@@ -23,41 +98,16 @@ function sanitizePayload(table: string, data: Record<string, any>): Record<strin
   delete clean.driver;
   delete clean.employee;
   delete clean.period;
-  delete clean.items;
+  delete clean.quemador;
   delete clean.crew_ids;
 
-  // Normalizaciones específicas por tabla
-  if (table === "customers") {
-    // customers en Supabase tiene: id, name, phone, address, created_at
-    delete clean.city;
-    delete clean.department;
-    delete clean.tax_id;
-  }
-
-  if (table === "production_batches") {
-    // production_batches tiene: id, production_date, brick_type_id, operator_id, shift, quantity_produced, status, supervisor_id, notes, created_at
-    delete clean.folio_number;
-    delete clean.horno;
-    delete clean.hora_vaciado;
-    delete clean.sector_asignado;
-  }
-
-  if (table === "orders") {
-    // orders tiene: id, customer_id, status, delivery_date, notes, created_at
-    delete clean.delivery_type;
-    delete clean.delivery_status;
-    delete clean.delivery_address;
-    delete clean.contact_phone;
-    delete clean.driver_id;
-    delete clean.city;
-    delete clean.city_discount_pct;
-    delete clean.city_discount_amount;
-    delete clean.subtotal;
-    delete clean.total_amount;
+  // En patio_despachos 'items' es una columna jsonb; en orders/sales se inserta en tabla hija
+  if (table !== "patio_despachos") {
+    delete clean.items;
   }
 
   if (table === "payroll_details") {
-    delete clean.quincena_amount;
+    // Columnas generadas automáticamente (GENERATED ALWAYS AS)
     delete clean.total_earned;
     delete clean.net_pay;
   }
@@ -67,15 +117,24 @@ function sanitizePayload(table: string, data: Record<string, any>): Record<strin
     delete clean.total_amount;
   }
 
-  if (table === "brick_types") {
-    delete clean.image_url;
-  }
-
   return clean;
 }
 
 export async function GET() {
   try {
+    const auth = await requireAuthenticatedSession();
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { success: false, error: auth.error },
+        { status: auth.status }
+      );
+    }
+
+    const role = auth.session.role;
+    const canViewPayroll = canPerformAction(role, "payroll.view");
+    const canViewCash = canPerformAction(role, "cash.view");
+    const canViewSales = canPerformAction(role, "sales.view") || canPerformAction(role, "deliveries.view");
+
     const admin = getAdminClient();
 
     // Consultar todas las tablas operativas de Supabase en paralelo
@@ -99,24 +158,36 @@ export async function GET() {
     ] = await Promise.all([
       admin.from("employees").select("*").order("full_name"),
       admin.from("brick_types").select("*").order("name"),
-      admin.from("customers").select("*").order("name"),
+      canViewSales ? admin.from("customers").select("*").order("name") : Promise.resolve({ data: [] }),
       admin.from("production_batches").select("*").order("production_date", { ascending: false }),
       admin.from("inventory_stock").select("*"),
       admin.from("inventory_movements").select("*").order("created_at", { ascending: false }),
-      admin.from("orders").select("*").order("created_at", { ascending: false }),
-      admin.from("order_items").select("*"),
-      admin.from("sales").select("*").order("created_at", { ascending: false }),
-      admin.from("sale_items").select("*"),
-      admin.from("payroll_periods").select("*").order("start_date", { ascending: false }),
-      admin.from("payroll_details").select("*"),
-      admin.from("employee_advances").select("*").order("advance_date", { ascending: false }),
-      admin.from("cash_ledger").select("*").order("movement_date", { ascending: false }),
+      canViewSales ? admin.from("orders").select("*").order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+      canViewSales ? admin.from("order_items").select("*") : Promise.resolve({ data: [] }),
+      canViewSales ? admin.from("sales").select("*").order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+      canViewSales ? admin.from("sale_items").select("*") : Promise.resolve({ data: [] }),
+      canViewPayroll ? admin.from("payroll_periods").select("*").order("start_date", { ascending: false }) : Promise.resolve({ data: [] }),
+      canViewPayroll ? admin.from("payroll_details").select("*") : Promise.resolve({ data: [] }),
+      canViewPayroll ? admin.from("employee_advances").select("*").order("advance_date", { ascending: false }) : Promise.resolve({ data: [] }),
+      canViewCash ? admin.from("cash_ledger").select("*").order("movement_date", { ascending: false }) : Promise.resolve({ data: [] }),
       admin.from("employee_attendance").select("*").order("date", { ascending: false }),
-      admin.from("employee_settlements").select("*").order("settlement_date", { ascending: false })
+      canViewPayroll ? admin.from("employee_settlements").select("*").order("settlement_date", { ascending: false }) : Promise.resolve({ data: [] })
     ]);
 
+    // Ocultar información salarial y PII sensible a roles sin permiso de planilla
+    const sanitizedEmployees = (employeesRes.data || []).map((emp: Record<string, unknown>) => {
+      if (canViewPayroll) return emp;
+      const publicEmp = { ...emp };
+      delete publicEmp.base_salary;
+      delete publicEmp.rate_per_thousand;
+      delete publicEmp.antiquity_bonus_pct;
+      delete publicEmp.frontier_bonus;
+      delete publicEmp.document_id;
+      return publicEmp;
+    });
+
     // Ensamblar ítems anidados en pedidos
-    const orderItemsMap = new Map<string, any[]>();
+    const orderItemsMap = new Map<string, Record<string, unknown>[]>();
     (orderItemsRes.data || []).forEach((item) => {
       const list = orderItemsMap.get(item.order_id) || [];
       list.push(item);
@@ -129,7 +200,7 @@ export async function GET() {
     }));
 
     // Ensamblar ítems anidados en ventas
-    const saleItemsMap = new Map<string, any[]>();
+    const saleItemsMap = new Map<string, Record<string, unknown>[]>();
     (saleItemsRes.data || []).forEach((item) => {
       const list = saleItemsMap.get(item.sale_id) || [];
       list.push(item);
@@ -161,7 +232,7 @@ export async function GET() {
         employeeSettlements: settlementsRes.data?.length || 0
       },
       data: {
-        employees: employeesRes.data || [],
+        employees: sanitizedEmployees,
         brickTypes: brickTypesRes.data || [],
         customers: customersRes.data || [],
         productionBatches: batchesRes.data || [],
@@ -177,10 +248,11 @@ export async function GET() {
         employeeSettlements: settlementsRes.data || []
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in GET /api/sync:", error);
+    const message = error instanceof Error ? error.message : "Error al sincronizar datos desde Supabase";
     return NextResponse.json(
-      { success: false, error: error.message || "Error al sincronizar datos desde Supabase" },
+      { success: false, error: message },
       { status: 500 }
     );
   }
@@ -188,6 +260,15 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireAuthenticatedSession();
+    if (!auth.authorized) {
+      return NextResponse.json(
+        { success: false, error: auth.error },
+        { status: auth.status }
+      );
+    }
+
+    const userRole = auth.session.role;
     const admin = getAdminClient();
     const body = await request.json();
 
@@ -195,9 +276,9 @@ export async function POST(request: Request) {
     const operations: Array<{
       table: string;
       action: "insert" | "update" | "delete" | "upsert";
-      data?: any;
+      data?: Record<string, unknown>;
       id?: string;
-      match?: Record<string, any>;
+      match?: Record<string, unknown>;
     }> = Array.isArray(body.operations) ? body.operations : [body];
 
     const results = [];
@@ -205,6 +286,16 @@ export async function POST(request: Request) {
     for (const op of operations) {
       const { table, action, data, id, match } = op;
       if (!table || !action) continue;
+
+      if (!canMutateTable(userRole, table, action)) {
+        results.push({
+          table,
+          action,
+          success: false,
+          error: `Acceso denegado: el rol '${userRole}' no tiene permisos para ejecutar '${action}' en '${table}'.`
+        });
+        continue;
+      }
 
       if (action === "delete") {
         let query = admin.from(table).delete();
@@ -220,7 +311,7 @@ export async function POST(request: Request) {
         } else {
           results.push({ table, action, success: true, id });
         }
-      } else if (action === "insert") {
+      } else if (action === "insert" && data) {
         const clean = sanitizePayload(table, data);
         const { data: inserted, error } = await admin.from(table).insert(clean).select().single();
         if (error) {
@@ -229,7 +320,7 @@ export async function POST(request: Request) {
         } else {
           // Si es pedido o venta, insertar ítems si vienen provistos
           if (table === "orders" && Array.isArray(data.items) && inserted?.id) {
-            const items = data.items.map((it: any) => ({
+            const items = (data.items as Array<Record<string, unknown>>).map((it) => ({
               order_id: inserted.id,
               brick_type_id: it.brick_type_id,
               quantity: it.quantity,
@@ -237,7 +328,7 @@ export async function POST(request: Request) {
             }));
             await admin.from("order_items").insert(items);
           } else if (table === "sales" && Array.isArray(data.items) && inserted?.id) {
-            const items = data.items.map((it: any) => ({
+            const items = (data.items as Array<Record<string, unknown>>).map((it) => ({
               sale_id: inserted.id,
               brick_type_id: it.brick_type_id,
               quantity: it.quantity,
@@ -247,7 +338,7 @@ export async function POST(request: Request) {
           }
           results.push({ table, action, success: true, record: inserted });
         }
-      } else if (action === "update") {
+      } else if (action === "update" && data) {
         const clean = sanitizePayload(table, data);
         let query = admin.from(table).update(clean);
         if (id) {
@@ -262,7 +353,7 @@ export async function POST(request: Request) {
         } else {
           results.push({ table, action, success: true, record: updated });
         }
-      } else if (action === "upsert") {
+      } else if (action === "upsert" && data) {
         const clean = sanitizePayload(table, data);
         const { data: upserted, error } = await admin.from(table).upsert(clean).select().single();
         if (error) {
@@ -278,10 +369,11 @@ export async function POST(request: Request) {
       success: results.every((r) => r.success),
       results
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in POST /api/sync:", error);
+    const message = error instanceof Error ? error.message : "Error al procesar sincronización en Supabase";
     return NextResponse.json(
-      { success: false, error: error.message || "Error al procesar sincronización en Supabase" },
+      { success: false, error: message },
       { status: 500 }
     );
   }

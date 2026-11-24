@@ -74,8 +74,10 @@ export function AuditoriaClient({ initialLogs, currentUserRole }: AuditoriaClien
   const [activeRole, setActiveRole] = useState<string>(currentUserRole || store.getCurrentRole())
 
   useEffect(() => {
-    // Sincronizar inmediatamente con los logs persistidos en el cliente
-    setLogs(AuditLogger.getLogs())
+    // Sincronizar con la base de datos inmutable de forma asíncrona
+    AuditLogger.fetchFromServer().then((serverLogs) => {
+      setLogs(serverLogs)
+    })
 
     const handleRoleUpdate = (e: any) => {
       const newRole = e?.detail || store.getCurrentRole()

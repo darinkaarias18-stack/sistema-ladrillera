@@ -4,7 +4,7 @@ import { Header } from "@/components/layout/header";
 import { store } from "@/lib/store";
 import { Employee, SettlementReason, EmployeeSettlement } from "@/types/database.types";
 import { useState, useEffect, useMemo } from "react";
-import { differenceInMonths, parseISO, differenceInYears, differenceInDays } from "date-fns";
+import { differenceInMonths, parseISO, differenceInYears, differenceInDays, addYears, addMonths } from "date-fns";
 import { getTodayDateString } from "@/lib/dates";
 import { Calculator, Save, AlertCircle, FileText, Printer, X } from "lucide-react";
 
@@ -12,6 +12,7 @@ export default function FiniquitoPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmpId, setSelectedEmpId] = useState<string>("");
   const [reason, setReason] = useState<SettlementReason>("renuncia");
+  const [includeDesahucio, setIncludeDesahucio] = useState<boolean>(false);
   const [otherDeductions, setOtherDeductions] = useState<number>(0);
   const [notes, setNotes] = useState<string>("");
   const [settlements, setSettlements] = useState<EmployeeSettlement[]>([]);
@@ -31,25 +32,35 @@ export default function FiniquitoPage() {
     const hireDate = parseISO(selectedEmployee.hire_date);
     const today = new Date();
     
-    const totalMonths = differenceInMonths(today, hireDate);
-    const years = differenceInYears(today, hireDate);
-    const months = totalMonths % 12;
-    // Rough estimation of remaining days
-    const days = differenceInDays(today, new Date(today.getFullYear(), today.getMonth(), 1));
-    
-    // Simplistic Bolivian calculation (Just a mock for now, 1 salary per year of service for severance)
-    let severancePay = 0;
-    if (reason === 'despido' || (reason === 'renuncia' && years >= 0)) {
-      // Indemnización: 1 sueldo por año. Plus duodécimas.
-      severancePay = (baseSalary * years) + ((baseSalary / 12) * months) + ((baseSalary / 360) * days);
-    }
-    
-    // Aguinaldo proporcional (Navidad)
-    const currentYearMonths = today.getMonth() + 1; // Jan is 0
-    const christmasBonus = (baseSalary / 12) * currentYearMonths;
+    const totalMonths = Math.max(0, differenceInMonths(today, hireDate));
+    const years = Math.max(0, differenceInYears(today, hireDate));
+    const anniversaryAfterYears = addYears(hireDate, years);
+    const months = Math.max(0, differenceInMonths(today, anniversaryAfterYears));
+    const dateAfterMonths = addMonths(anniversaryAfterYears, months);
+    const days = Math.min(30, Math.max(0, differenceInDays(today, dateAfterMonths)));
+    const totalCommercialDays = years * 360 + months * 30 + days;
 
-    // Vacaciones (15 días por año aprox, digamos que se le debe 1 año de vacaciones si no las tomó)
-    const vacationPay = baseSalary / 2; // Media docena (15 días)
+    // Indemnización: D.S. 110 (desde los 90 días / 3 meses continuos) usando año comercial de 360 días
+    let indemnizacion = 0;
+    if (totalCommercialDays >= 90) {
+      indemnizacion = (baseSalary * years) + ((baseSalary / 12) * months) + ((baseSalary / 360) * days);
+    }
+
+    // Desahucio (3 sueldos por despido intempestivo/injustificado según Art. 13 LGT)
+    const desahucioPay = reason === "despido" && includeDesahucio ? baseSalary * 3 : 0;
+    const severancePay = indemnizacion + desahucioPay;
+    
+    // Aguinaldo proporcional (desde 1 de enero o fecha de ingreso si fue este año)
+    const startOfYear = new Date(today.getFullYear(), 0, 1);
+    const aguinaldoStart = hireDate > startOfYear ? hireDate : startOfYear;
+    const aguinaldoMonths = Math.max(0, differenceInMonths(today, aguinaldoStart));
+    const aguinaldoAfterMonths = addMonths(aguinaldoStart, aguinaldoMonths);
+    const aguinaldoDays = Math.min(30, Math.max(0, differenceInDays(today, aguinaldoAfterMonths)));
+    const christmasBonus = (baseSalary / 12) * (aguinaldoMonths + aguinaldoDays / 30);
+
+    // Vacaciones (15 días por año hasta 5 años, 20 días 5-10 años, 30 días >10 años)
+    const vacationDaysPerYear = years >= 10 ? 30 : years >= 5 ? 20 : 15;
+    const vacationPay = (baseSalary / 30) * (vacationDaysPerYear / 2);
 
     const totalAmount = severancePay + christmasBonus + vacationPay - otherDeductions;
 
@@ -57,12 +68,14 @@ export default function FiniquitoPage() {
       timeString: `${years} años, ${months} meses, ${days} días`,
       totalMonths,
       baseSalary,
+      indemnizacion,
+      desahucioPay,
       severancePay,
       vacationPay,
       christmasBonus,
       totalAmount
     };
-  }, [selectedEmployee, reason, otherDeductions]);
+  }, [selectedEmployee, reason, includeDesahucio, otherDeductions]);
 
   const handleSave = () => {
     if (!selectedEmployee || !calculations) return;
@@ -146,7 +159,11 @@ export default function FiniquitoPage() {
                       </label>
                       <select
                         value={reason}
-                        onChange={e => setReason(e.target.value as SettlementReason)}
+                        onChange={e => {
+                          const newReason = e.target.value as SettlementReason;
+                          setReason(newReason);
+                          setIncludeDesahucio(newReason === "despido");
+                        }}
                         className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 bg-slate-50"
                       >
                         <option value="renuncia">Renuncia Voluntaria</option>
@@ -155,6 +172,20 @@ export default function FiniquitoPage() {
                         <option value="otro">Otro Motivo</option>
                       </select>
                     </div>
+
+                    {reason === "despido" && (
+                      <label className="flex items-center gap-2.5 p-3 rounded-lg border border-amber-200 bg-amber-50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={includeDesahucio}
+                          onChange={e => setIncludeDesahucio(e.target.checked)}
+                          className="h-4 w-4 accent-orange-600 rounded"
+                        />
+                        <span className="text-xs font-semibold text-amber-900">
+                          Incluir Desahucio (3 sueldos por despido intempestivo - Art. 13 LGT)
+                        </span>
+                      </label>
+                    )}
 
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1">
@@ -212,9 +243,15 @@ export default function FiniquitoPage() {
                   <div className="space-y-4">
                     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm space-y-2">
                       <div className="flex justify-between text-sm">
-                        <span className="text-slate-600">Indemnización (Desahucio/Años):</span>
-                        <span className="font-semibold">Bs. {calculations.severancePay.toFixed(2)}</span>
+                        <span className="text-slate-600">Indemnización (360 días):</span>
+                        <span className="font-semibold">Bs. {calculations.indemnizacion.toFixed(2)}</span>
                       </div>
+                      {calculations.desahucioPay > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-amber-700 font-medium">Desahucio (3 meses):</span>
+                          <span className="font-semibold text-amber-700">Bs. {calculations.desahucioPay.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-600">Aguinaldo Proporcional:</span>
                         <span className="font-semibold">Bs. {calculations.christmasBonus.toFixed(2)}</span>

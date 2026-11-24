@@ -119,6 +119,7 @@ export interface Customer {
   address?: string;
   city?: string;
   department?: string;
+  tax_id?: string;
   created_at?: string;
 }
 
@@ -360,7 +361,7 @@ export interface AuditLogEntry {
   module: string;
   entity_id?: string;
   description: string;
-  details?: Record<string, any>;
+  details?: Record<string, unknown> | object;
   ip_address?: string;
 }
 

@@ -1,5 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { DEFAULT_ROLE_MODULES } from '@/lib/modules-config'
+import { UserRole } from '@/types/database.types'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -18,7 +20,7 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           supabaseResponse = NextResponse.next({
             request,
           })
@@ -63,30 +65,64 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Proteger rutas /admin/auditoria y /admin/observaciones exclusivamente para superadmin
-  if (
-    user &&
-    (
-      request.nextUrl.pathname.startsWith('/admin/auditoria') ||
-      request.nextUrl.pathname.startsWith('/admin/logs') ||
-      request.nextUrl.pathname.startsWith('/admin/observaciones')
-    )
-  ) {
-    const role = (user.user_metadata?.role || '').toLowerCase();
-    if (role !== 'superadmin') {
-      const url = request.nextUrl.clone()
-      url.pathname = '/'
-      return NextResponse.redirect(url)
-    }
-  }
+  if (user) {
+    const isMaster = user.email?.toLowerCase() === 'darinka.arias18@gmail.com';
+    const role = (isMaster
+      ? 'superadmin'
+      : (user.user_metadata?.role || 'cajero')
+    ).toLowerCase() as UserRole;
 
-  // Proteger resto de rutas /admin para superadmin y admin
-  if (user && request.nextUrl.pathname.startsWith('/admin')) {
-    const role = (user.user_metadata?.role || '').toLowerCase();
-    if (role && role !== 'admin' && role !== 'superadmin') {
-      const url = request.nextUrl.clone()
-      url.pathname = '/'
-      return NextResponse.redirect(url)
+    const pathname = request.nextUrl.pathname;
+
+    // Proteger rutas /admin/auditoria, /admin/logs y /admin/observaciones exclusivamente para superadmin
+    if (
+      pathname.startsWith('/admin/auditoria') ||
+      pathname.startsWith('/admin/logs') ||
+      pathname.startsWith('/admin/observaciones')
+    ) {
+      if (role !== 'superadmin') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/'
+        return NextResponse.redirect(url)
+      }
+    }
+
+    // Proteger resto de rutas /admin para superadmin y admin
+    if (pathname.startsWith('/admin')) {
+      if (role !== 'admin' && role !== 'superadmin') {
+        const url = request.nextUrl.clone()
+        url.pathname = '/'
+        return NextResponse.redirect(url)
+      }
+    }
+
+    // Proteger rutas operativas según módulos asignados al rol o usuario
+    if (
+      role !== 'superadmin' &&
+      role !== 'admin' &&
+      pathname !== '/' &&
+      !pathname.startsWith('/login') &&
+      !pathname.startsWith('/auth') &&
+      !pathname.startsWith('/api')
+    ) {
+      const customModules =
+        Array.isArray(user.user_metadata?.allowed_modules) &&
+        user.user_metadata.allowed_modules.length > 0
+          ? (user.user_metadata.allowed_modules as string[])
+          : null;
+
+      const allowedRoutes = customModules || DEFAULT_ROLE_MODULES[role] || ['/'];
+      const hasAccess = allowedRoutes.some((route) =>
+        route === '/'
+          ? pathname === '/'
+          : pathname === route || pathname.startsWith(`${route}/`)
+      );
+
+      if (!hasAccess) {
+        const url = request.nextUrl.clone()
+        url.pathname = '/'
+        return NextResponse.redirect(url)
+      }
     }
   }
 

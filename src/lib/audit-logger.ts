@@ -1,4 +1,4 @@
-import { AuditLogEntry, AuditActionType, AuditSeverity, UserRole } from "@/types/database.types";
+import type { AuditLogEntry, AuditSeverity, UserRole } from "@/types/database.types";
 
 const INITIAL_AUDIT_LOGS: AuditLogEntry[] = [
   {
@@ -212,13 +212,15 @@ export class AuditLogger {
             if (!userEmail) userEmail = parsed.email;
             if (!userRole) userRole = parsed.role;
           }
-        } catch (e) {}
+        } catch {
+          // Ignorar error de parseo en localStorage
+        }
       }
 
-      const finalUserId = userId || "83ea7d79-d6d7-4d73-b9ee-5304497df779";
-      const finalUserName = userName || "Darinka Arias";
-      const finalUserEmail = userEmail || "darinka.arias18@gmail.com";
-      const finalUserRole: UserRole = userRole || "superadmin";
+      const finalUserId = userId || "system";
+      const finalUserName = userName || "Sistema / No Identificado";
+      const finalUserEmail = userEmail || "sistema@incegua.local";
+      const finalUserRole: UserRole = userRole || "cajero";
 
       const newEntry: AuditLogEntry = {
         ...entry,
@@ -233,16 +235,35 @@ export class AuditLogger {
 
       AuditLogger.logs.unshift(newEntry);
       AuditLogger.saveToStorage();
+
+      // Persistir de forma asíncrona en la tabla inmutable de Supabase
+      if (typeof window !== "undefined") {
+        fetch("/api/audit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: newEntry.action,
+            severity: newEntry.severity,
+            module: newEntry.module,
+            entity_id: newEntry.entity_id,
+            description: newEntry.description,
+            details: newEntry.details,
+          }),
+        }).catch(() => {
+          // Silencioso en caso de estar offline o antes de completar login
+        });
+      }
+
       return newEntry;
     } catch (err) {
       console.error("Error en AuditLogger.log:", err);
       return {
         id: `log-fallback-${Date.now()}`,
         timestamp: new Date().toISOString(),
-        user_id: "83ea7d79-d6d7-4d73-b9ee-5304497df779",
-        user_name: "Darinka Arias",
-        user_email: "darinka.arias18@gmail.com",
-        user_role: "superadmin",
+        user_id: "system",
+        user_name: "Sistema / Error de Auditoría",
+        user_email: "sistema@incegua.local",
+        user_role: "cajero",
         action: entry.action,
         severity: entry.severity,
         module: entry.module,
@@ -254,7 +275,7 @@ export class AuditLogger {
   static logSecurityAlert(
     severity: AuditSeverity,
     description: string,
-    details?: Record<string, any>,
+    details?: Record<string, unknown>,
     user?: { id?: string; name?: string; email?: string; role?: UserRole }
   ): AuditLogEntry {
     return AuditLogger.log({
@@ -271,12 +292,25 @@ export class AuditLogger {
     });
   }
 
-  static clearLogs(): void {
-    AuditLogger.logs = [];
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("erp_audit_logs");
-      window.dispatchEvent(new CustomEvent("erp_audit_updated"));
+  static async fetchFromServer(): Promise<AuditLogEntry[]> {
+    if (typeof window === "undefined") return AuditLogger.logs;
+    try {
+      const res = await fetch("/api/audit", {
+        method: "GET",
+        headers: { "Cache-Control": "no-cache" },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && Array.isArray(json.logs) && json.logs.length > 0) {
+          AuditLogger.logs = json.logs;
+          AuditLogger.saveToStorage();
+          return AuditLogger.logs;
+        }
+      }
+    } catch {
+      // Fallback a caché local si no hay conexión
     }
+    return AuditLogger.getLogs();
   }
 
   static exportToCSV(): string {

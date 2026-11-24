@@ -183,6 +183,20 @@ export function Sidebar() {
     setOpenMenus((prev) => ({ ...prev, [name]: !prev[name] }));
   };
 
+  const handleRoleChange = (role: UserRole) => {
+    store.setCurrentRole(role);
+    setCurrentRoleState(role);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_role_changed", { detail: role }));
+    }
+    // Si está en /admin/auditoria o /admin/observaciones y no es superadmin, redirigir al dashboard
+    if ((pathname.startsWith("/admin/auditoria") || pathname.startsWith("/admin/observaciones")) && role !== "superadmin") {
+      router.push("/");
+    } else if (pathname.startsWith("/admin") && role !== "superadmin" && role !== "admin") {
+      router.push("/");
+    }
+  };
+
   useEffect(() => {
     const fetchUserRole = async () => {
       try {
@@ -201,6 +215,7 @@ export function Sidebar() {
       }
     };
     fetchUserRole();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -217,20 +232,6 @@ export function Sidebar() {
       }
     });
   }, [pathname]);
-
-  const handleRoleChange = (role: UserRole) => {
-    store.setCurrentRole(role);
-    setCurrentRoleState(role);
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("erp_role_changed", { detail: role }));
-    }
-    // Si está en /admin/auditoria o /admin/observaciones y no es superadmin, redirigir al dashboard
-    if ((pathname.startsWith("/admin/auditoria") || pathname.startsWith("/admin/observaciones")) && role !== "superadmin") {
-      router.push("/");
-    } else if (pathname.startsWith("/admin") && role !== "superadmin" && role !== "admin") {
-      router.push("/");
-    }
-  };
 
   const isPathAllowed = (href?: string) => {
     if (!href) return true;
