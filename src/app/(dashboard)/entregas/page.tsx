@@ -37,6 +37,11 @@ export default function EntregasPage() {
 
   useEffect(() => {
     loadData();
+    const events = ["erp_orders_updated", "erp_inventory_updated", "erp_sync_completed"];
+    events.forEach((ev) => window.addEventListener(ev, loadData));
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, loadData));
+    };
   }, []);
 
   const handleStatusChange = (orderId: string, newStatus: DeliveryStatus) => {
@@ -375,21 +380,30 @@ export default function EntregasPage() {
 
                         {/* Estado Entrega (Dropdown interactivo) */}
                         <td className="p-3.5 text-center">
-                          <select
-                            value={currentDelivStatus}
-                            onChange={(e) => handleStatusChange(order.id, e.target.value as DeliveryStatus)}
-                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase cursor-pointer border shadow-2xs focus:outline-none transition-colors ${
-                              currentDelivStatus === "programado"
-                                ? "bg-amber-100 text-amber-800 border-amber-300"
-                                : currentDelivStatus === "entregado"
-                                ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                                : "bg-red-100 text-red-800 border-red-300"
-                            }`}
-                          >
-                            <option value="programado">Programado</option>
-                            <option value="entregado">Entregado</option>
-                            <option value="cancelado">Cancelado</option>
-                          </select>
+                          {order.operational_status === "por_producir" ? (
+                            <span
+                              className="inline-block px-2.5 py-1 rounded-full text-[11px] font-bold uppercase bg-amber-100 text-amber-900 border border-amber-300"
+                              title="En espera de Salida de Horno (Deshorne) para pasar a Listo en Bodega"
+                            >
+                              POR PRODUCIR
+                            </span>
+                          ) : (
+                            <select
+                              value={currentDelivStatus}
+                              onChange={(e) => handleStatusChange(order.id, e.target.value as DeliveryStatus)}
+                              className={`px-2.5 py-1 rounded-full text-[11px] font-bold uppercase cursor-pointer border shadow-2xs focus:outline-none transition-colors ${
+                                currentDelivStatus === "programado"
+                                  ? "bg-amber-100 text-amber-800 border-amber-300"
+                                  : currentDelivStatus === "entregado"
+                                  ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                                  : "bg-red-100 text-red-800 border-red-300"
+                              }`}
+                            >
+                              <option value="programado">Listo / Programado</option>
+                              <option value="entregado">Entregado</option>
+                              <option value="cancelado">Cancelado</option>
+                            </select>
+                          )}
                         </td>
 
                         {/* Acciones */}

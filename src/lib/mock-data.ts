@@ -246,15 +246,14 @@ export const INITIAL_BRICK_TYPES: BrickType[] = [
 
 export const INITIAL_INVENTORY_STOCK: InventoryStock[] = [
   { id: "stock-1", brick_type_id: "brick-1", location: "patio_secado", quantity: 14500 },
-  { id: "stock-2", brick_type_id: "brick-1", location: "horno", quantity: 9000 },
+  { id: "stock-2", brick_type_id: "brick-1", location: "horno", quantity: 28000 },
   { id: "stock-3", brick_type_id: "brick-1", location: "bodega_terminado", quantity: 28000 },
 
   { id: "stock-4", brick_type_id: "brick-3", location: "patio_secado", quantity: 8200 },
-  { id: "stock-5", brick_type_id: "brick-3", location: "horno", quantity: 6000 },
+  { id: "stock-5", brick_type_id: "brick-3", location: "horno", quantity: 25000 },
   { id: "stock-6", brick_type_id: "brick-3", location: "bodega_terminado", quantity: 19500 },
 
   { id: "stock-7", brick_type_id: "brick-5", location: "patio_secado", quantity: 3500 },
-  { id: "stock-8", brick_type_id: "brick-5", location: "horno", quantity: 2000 },
   { id: "stock-9", brick_type_id: "brick-5", location: "bodega_terminado", quantity: 7400 },
 ];
 

@@ -4,12 +4,13 @@ import { Header } from "@/components/layout/header";
 import { DataTableToolbar } from "@/components/data-table/data-table-toolbar";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { store } from "@/lib/store";
-import { Order, Customer, BrickType, InventoryStock, Employee, DeliveryType } from "@/types/database.types";
+import { Order, Customer, BrickType, InventoryStock, Employee, DeliveryType, OrderPaymentStatus, OrderFulfillmentType, OrderOperationalStatus } from "@/types/database.types";
 import { useEffect, useState, useMemo } from "react";
-import { Plus, X, PackageOpen, Calendar, MapPin, AlertCircle, Printer, Trash2, Phone, Percent, MessageCircle } from "lucide-react";
+import { Plus, X, PackageOpen, Calendar, MapPin, AlertCircle, Printer, Trash2, Phone, Percent, MessageCircle, Flame, CheckCircle2, LayoutGrid, List, ArrowRight, GripVertical } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 
 interface OrderInput {
+  orderType: OrderFulfillmentType;
   customerId: string;
   contactPhone: string;
   deliveryAddress: string;
@@ -19,6 +20,8 @@ interface OrderInput {
   deliveryDate: string;
   deliveryType: DeliveryType;
   driverId: string;
+  paymentStatus: OrderPaymentStatus;
+  amountPaid: number;
   notes: string;
 }
 
@@ -31,16 +34,23 @@ interface CartItem {
 }
 
 export default function PedidosPage() {
+  const [allOrders, setAllOrders] = useState<Order[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [brickTypes, setBrickTypes] = useState<BrickType[]>([]);
   const [inventory, setInventory] = useState<InventoryStock[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"todos" | "por_producir" | "listo_en_bodega" | "entregado" | "cancelado">("todos");
+  const [paymentFilter, setPaymentFilter] = useState<"todos" | OrderPaymentStatus>("todos");
+  const [viewMode, setViewMode] = useState<"lista" | "tablero">("lista");
+  const [draggedOrderId, setDraggedOrderId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [receiptOrder, setReceiptOrder] = useState<Order | null>(null);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const {
     register,
@@ -51,6 +61,7 @@ export default function PedidosPage() {
     formState: { errors },
   } = useForm<OrderInput>({
     defaultValues: {
+      orderType: "stock",
       customerId: "",
       contactPhone: "",
       deliveryAddress: "",
@@ -60,15 +71,20 @@ export default function PedidosPage() {
       deliveryDate: new Date().toISOString().split("T")[0],
       deliveryType: "fabrica",
       driverId: "",
+      paymentStatus: "por_cobrar",
+      amountPaid: 0,
       notes: "",
     },
   });
 
+  const selectedOrderType = useWatch({ control, name: "orderType" }) || "stock";
   const selectedCustomerId = useWatch({ control, name: "customerId" });
   const selectedBrickTypeId = useWatch({ control, name: "brickTypeId" });
   const requestedQuantity = useWatch({ control, name: "quantity" });
   const currentUnitPrice = useWatch({ control, name: "unitPrice" });
   const selectedDeliveryType = useWatch({ control, name: "deliveryType" });
+  const selectedPaymentStatus = useWatch({ control, name: "paymentStatus" });
+  const currentAmountPaid = useWatch({ control, name: "amountPaid" });
 
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId);
@@ -92,7 +108,32 @@ export default function PedidosPage() {
   }, [cartSubtotal, cartDiscountAmount]);
 
   const loadData = () => {
-    let list = store.getOrders();
+    const rawOrders = store.getOrders();
+    setAllOrders(rawOrders);
+    let list = rawOrders;
+
+    if (statusFilter !== "todos") {
+      list = list.filter((o) => {
+        const opStatus: OrderOperationalStatus =
+          o.operational_status ||
+          (o.status === "cancelado" || o.delivery_status === "cancelado"
+            ? "cancelado"
+            : o.status === "vendido" || o.delivery_status === "entregado"
+            ? "entregado"
+            : o.order_type === "contra_produccion"
+            ? "por_producir"
+            : "listo_en_bodega");
+        return opStatus === statusFilter;
+      });
+    }
+
+    if (paymentFilter !== "todos") {
+      list = list.filter((o) => {
+        const payStatus: OrderPaymentStatus = o.payment_status || (o.status === "vendido" ? "pagado" : "por_cobrar");
+        return payStatus === paymentFilter;
+      });
+    }
+
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -113,7 +154,17 @@ export default function PedidosPage() {
 
   useEffect(() => {
     loadData();
-  }, [search]);
+    const events = [
+      "erp_sync_completed",
+      "erp_orders_updated",
+      "erp_inventory_updated",
+      "erp_brick_types_updated",
+    ];
+    events.forEach((ev) => window.addEventListener(ev, loadData));
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, loadData));
+    };
+  }, [search, statusFilter, paymentFilter]);
 
   // Update default price when brick type changes
   useEffect(() => {
@@ -136,12 +187,79 @@ export default function PedidosPage() {
     }
   }, [selectedCustomerId, customers, setValue]);
 
+  const getReservedUnitsForBrick = (brickTypeId: string, includeCart = true) => {
+    const inPendingOrders = allOrders
+      .filter((o) => {
+        const opStatus =
+          o.operational_status ||
+          (o.status === "pendiente" && o.order_type === "contra_produccion"
+            ? "por_producir"
+            : "listo_en_bodega");
+        return (
+          o.status === "pendiente" &&
+          o.delivery_status !== "entregado" &&
+          o.delivery_status !== "cancelado" &&
+          opStatus === "listo_en_bodega"
+        );
+      })
+      .reduce(
+        (sum, o) =>
+          sum +
+          (o.items || [])
+            .filter((it) => it.brick_type_id === brickTypeId)
+            .reduce((iSum, it) => iSum + (it.quantity || 0), 0),
+        0
+      );
+
+    const inCart =
+      includeCart && selectedOrderType === "stock"
+        ? cartItems
+            .filter((c) => c.brickTypeId === brickTypeId)
+            .reduce((sum, c) => sum + (c.quantity || 0), 0)
+        : 0;
+
+    return inPendingOrders + inCart;
+  };
+
+  const getFreeStockForBrick = (brickTypeId: string, includeCart = true) => {
+    const bodega = inventory
+      .filter((i) => i.brick_type_id === brickTypeId && i.location === "bodega_terminado")
+      .reduce((sum, i) => sum + (i.quantity || 0), 0);
+    return Math.max(0, bodega - getReservedUnitsForBrick(brickTypeId, includeCart));
+  };
+
   const onSubmit = (data: OrderInput) => {
+    setFormError(null);
     if (cartItems.length === 0) {
-      alert("Debes agregar al menos un producto al pedido.");
+      setFormError("Debes agregar al menos un producto al pedido.");
       return;
     }
-    
+
+    const orderType: OrderFulfillmentType = data.orderType || "stock";
+
+    if (orderType === "contra_produccion" && !data.deliveryDate) {
+      setFormError("Los pedidos Contra Producción exigen una Fecha Comprometida de Entrega.");
+      return;
+    }
+
+    // Validación estricta final contra Stock Libre en Bodega solo para pedidos inmediatos con stock
+    if (orderType === "stock") {
+      const qtyByBrick = new Map<string, number>();
+      cartItems.forEach((it) => {
+        qtyByBrick.set(it.brickTypeId, (qtyByBrick.get(it.brickTypeId) || 0) + it.quantity);
+      });
+      for (const [bId, reqQty] of qtyByBrick.entries()) {
+        const freeWithoutCart = getFreeStockForBrick(bId, false);
+        if (reqQty > freeWithoutCart) {
+          const bName = brickTypes.find((b) => b.id === bId)?.name || "Producto";
+          setFormError(
+            `Stock insuficiente en bodega para ${bName} (Disponible libre: ${freeWithoutCart.toLocaleString("es-BO")} unid.) — cambia a "Contra Producción (Preventa)" o programa horneada.`
+          );
+          return;
+        }
+      }
+    }
+
     const customer = customers.find(c => c.id === data.customerId);
     const customerCity = customer?.city || "Santa Cruz";
     const discountPct = store.getDiscountForCity(customerCity);
@@ -149,13 +267,25 @@ export default function PedidosPage() {
     const discountAmount = Number(((subtotal * discountPct) / 100).toFixed(2));
     const totalAmount = Math.max(0, subtotal - discountAmount);
 
+    const payStatus: OrderPaymentStatus = data.paymentStatus || "por_cobrar";
+    const amountPaid =
+      payStatus === "pagado"
+        ? totalAmount
+        : payStatus === "anticipo"
+        ? Math.min(totalAmount, Math.max(0, Number(data.amountPaid || 0)))
+        : 0;
+
     const newOrder = store.createOrder({
+      order_type: orderType,
+      operational_status: orderType === "contra_produccion" ? "por_producir" : "listo_en_bodega",
       customer_id: data.customerId,
       city: customerCity,
       city_discount_pct: discountPct,
       city_discount_amount: discountAmount,
       subtotal: subtotal,
       total_amount: totalAmount,
+      payment_status: payStatus,
+      amount_paid: amountPaid,
       status: "pendiente",
       delivery_date: data.deliveryDate,
       delivery_type: data.deliveryType,
@@ -180,18 +310,28 @@ export default function PedidosPage() {
     setReceiptOrder(newOrder);
     setIsModalOpen(false);
     setCartItems([]);
+    setFormError(null);
     reset();
     loadData();
   };
 
   const handleAddItem = () => {
+    setFormError(null);
     const bId = control._formValues.brickTypeId;
     const qty = Number(control._formValues.quantity);
     const price = Number(control._formValues.unitPrice);
     
     if (!bId || !qty || !price || qty <= 0 || price <= 0) {
-      alert("Completa todos los campos del producto con valores válidos mayores a 0.");
+      setFormError("Completa todos los campos del producto con valores válidos mayores a 0.");
       return;
+    }
+
+    if (selectedOrderType === "stock") {
+      const freeStock = getFreeStockForBrick(bId, true);
+      if (freeStock <= 0 || qty > freeStock) {
+        setFormError("Stock insuficiente en bodega — requiere programación de horneada o cambiar a Contra Producción.");
+        return;
+      }
     }
     
     const brick = brickTypes.find(b => b.id === bId);
@@ -277,48 +417,274 @@ export default function PedidosPage() {
     setCartItems(cartItems.filter(i => i.id !== id));
   };
 
+  const getOrderOpStatus = (o: Order): OrderOperationalStatus =>
+    o.operational_status ||
+    (o.status === "cancelado" || o.delivery_status === "cancelado"
+      ? "cancelado"
+      : o.status === "vendido" || o.delivery_status === "entregado"
+      ? "entregado"
+      : o.order_type === "contra_produccion"
+      ? "por_producir"
+      : "listo_en_bodega");
+
+  const getPhysicalStockTrafficLight = (o: Order) => {
+    const items = o.items || [];
+    if (items.length === 0) {
+      return { ok: true, actual: 0, missing: 0 };
+    }
+    let worstMissing = 0;
+    let worstActual = 0;
+    let minActualWhenOk = Infinity;
+
+    for (const item of items) {
+      const physical = inventory
+        .filter((s) => s.brick_type_id === item.brick_type_id && s.location === "bodega_terminado")
+        .reduce((sum, s) => sum + (s.quantity || 0), 0);
+      if (physical < item.quantity) {
+        const missing = item.quantity - physical;
+        if (missing > worstMissing) {
+          worstMissing = missing;
+          worstActual = physical;
+        }
+      } else {
+        minActualWhenOk = Math.min(minActualWhenOk, physical);
+      }
+    }
+
+    if (worstMissing > 0) {
+      return { ok: false, actual: worstActual, missing: worstMissing };
+    }
+    return { ok: true, actual: minActualWhenOk === Infinity ? 0 : minActualWhenOk, missing: 0 };
+  };
+
+  const handleAdvanceOrderStatus = (order: Order, target: "listo_en_bodega" | "entregado") => {
+    const current = getOrderOpStatus(order);
+    if (target === current) return;
+
+    if (target === "listo_en_bodega" && current === "por_producir") {
+      const res = store.promoteOrderToReady(order.id);
+      if (!res.ok) {
+        window.alert(res.message || "Stock insuficiente en Bodega para habilitar este pedido.");
+        return;
+      }
+      loadData();
+      return;
+    }
+
+    if (target === "entregado") {
+      if (current === "por_producir") {
+        window.alert("Este pedido aún está POR PRODUCIR. Primero debe pasar a Listo en Bodega (requiere stock en bodega / Deshorne).");
+        return;
+      }
+      if (window.confirm("¿Confirmas marcar este pedido como ENTREGADO? Se registrará la salida definitiva en Inventario y se liberará la reserva.")) {
+        store.updateOrderDeliveryStatus(order.id, "entregado");
+        loadData();
+      }
+    }
+  };
+
   const pageSize = 10;
   const paginated = orders.slice((page - 1) * pageSize, page * pageSize);
   const totalPages = Math.ceil(orders.length / pageSize) || 1;
 
-  // Inventory logic for the selected brick type
+  const kpiMetrics = useMemo(() => {
+    const getOp = (o: Order): OrderOperationalStatus =>
+      o.operational_status ||
+      (o.status === "cancelado" || o.delivery_status === "cancelado"
+        ? "cancelado"
+        : o.status === "vendido" || o.delivery_status === "entregado"
+        ? "entregado"
+        : o.order_type === "contra_produccion"
+        ? "por_producir"
+        : "listo_en_bodega");
+
+    const activePending = allOrders.filter((o) => {
+      const op = getOp(o);
+      return op === "listo_en_bodega" || op === "por_producir";
+    });
+    const porProducirOrders = allOrders.filter((o) => getOp(o) === "por_producir");
+    const listoOrders = allOrders.filter((o) => getOp(o) === "listo_en_bodega");
+
+    const porProducirUnits = porProducirOrders.reduce(
+      (sum, o) => sum + (o.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0),
+      0
+    );
+    const reservedUnits = listoOrders.reduce(
+      (sum, o) => sum + (o.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0),
+      0
+    );
+    const deliveredCount = allOrders.filter((o) => getOp(o) === "entregado").length;
+    const canceledCount = allOrders.filter((o) => getOp(o) === "cancelado").length;
+
+    return {
+      activeCount: activePending.length,
+      porProducirCount: porProducirOrders.length,
+      porProducirUnits,
+      listoCount: listoOrders.length,
+      reservedUnits,
+      deliveredCount,
+      canceledCount,
+      totalCount: allOrders.length,
+    };
+  }, [allOrders]);
+
+  // Inventory logic for the selected brick type (Disponible Libre en Bodega)
+  const reservedSelectedBrick = useMemo(() => {
+    if (!selectedBrickTypeId) return 0;
+    return getReservedUnitsForBrick(selectedBrickTypeId, true);
+  }, [selectedBrickTypeId, allOrders, cartItems]);
+
   const availableStock = useMemo(() => {
     if (!selectedBrickTypeId) return 0;
-    const stock = inventory.find(i => i.brick_type_id === selectedBrickTypeId && i.location === "bodega_terminado");
-    return stock ? stock.quantity : 0;
-  }, [selectedBrickTypeId, inventory]);
+    return getFreeStockForBrick(selectedBrickTypeId, true);
+  }, [selectedBrickTypeId, inventory, allOrders, cartItems]);
 
   const stockAfterOrder = availableStock - (requestedQuantity || 0);
-  const isOutOfStock = stockAfterOrder < 0;
+  const isOutOfStock = selectedOrderType === "stock" && (stockAfterOrder < 0 || availableStock <= 0);
 
   return (
     <>
       <Header title="Gestión de Pedidos" />
 
+      {!isModalOpen ? (
       <div className="p-6 space-y-6">
         <div className="bg-gradient-to-r from-orange-900 to-slate-900 text-white rounded-xl p-5 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <h3 className="font-bold text-lg text-orange-200">Pedidos y Reservas</h3>
             <p className="text-xs text-slate-300 mt-1 max-w-2xl">
-              Registra los pedidos de los clientes. Al crear un pedido, el inventario se reserva automáticamente de la bodega de producto terminado.
+              Registra pedidos con stock inmediato en bodega o contra producción (preventa). Los pedidos contra producción se habilitan automáticamente al registrar el Deshorne.
             </p>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition shadow-md whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Registrar Pedido</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className={`px-3.5 py-2 rounded-lg border text-xs flex items-center gap-2 ${
+              kpiMetrics.porProducirUnits > 0
+                ? "bg-amber-500/20 border-amber-400/60 text-amber-100"
+                : "bg-slate-800/70 border-slate-700 text-slate-300"
+            }`}>
+              <Flame className={`w-4 h-4 ${kpiMetrics.porProducirUnits > 0 ? "text-amber-300" : "text-slate-400"}`} />
+              <div>
+                <div className="text-[10px] uppercase tracking-wider opacity-80">Unid. Comprometidas por Producir</div>
+                <div className="font-bold text-sm">{kpiMetrics.porProducirUnits.toLocaleString("es-BO")} un. ({kpiMetrics.porProducirCount} ped.)</div>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center space-x-2 bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-lg font-semibold text-sm transition shadow-md whitespace-nowrap cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Registrar Pedido</span>
+            </button>
+          </div>
         </div>
 
         {/* Tabla Toolbar & Contenido */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-          <div className="p-4 border-b border-slate-200">
-            <DataTableToolbar onSearch={setSearch} placeholder="Buscar por cliente o estado..." />
+          <div className="p-4 border-b border-slate-200 space-y-3">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex-1">
+                <DataTableToolbar onSearch={setSearch} placeholder="Buscar por cliente, teléfono o ID..." />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold">
+                  Pedidos Activos: <strong>{kpiMetrics.activeCount}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-orange-50 border border-orange-200 text-orange-800 font-semibold">
+                  Unid. Reservadas: <strong>{kpiMetrics.reservedUnits.toLocaleString("es-BO")}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-300 text-amber-900 font-semibold">
+                  Por Producir: <strong>{kpiMetrics.porProducirUnits.toLocaleString("es-BO")} un.</strong>
+                </span>
+
+                {/* Selector de Vista: Lista | Tablero */}
+                <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 ml-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("lista")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
+                      viewMode === "lista"
+                        ? "bg-white text-slate-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <List className="w-3.5 h-3.5" />
+                    <span>Vista Lista</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("tablero")}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md font-semibold transition cursor-pointer ${
+                      viewMode === "tablero"
+                        ? "bg-white text-slate-900 shadow-2xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>Vista Tablero</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Filtros combinados de Estado Logístico y Estado de Pago */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[
+                  { key: "todos", label: `Todos (${kpiMetrics.totalCount})` },
+                  { key: "por_producir", label: `Por Producir (${kpiMetrics.porProducirCount})` },
+                  { key: "listo_en_bodega", label: `Listo en Bodega (${kpiMetrics.listoCount})` },
+                  { key: "entregado", label: `Entregado (${kpiMetrics.deliveredCount})` },
+                  { key: "cancelado", label: `Cancelado (${kpiMetrics.canceledCount})` },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(tab.key as any);
+                      setPage(1);
+                    }}
+                    className={`px-3 py-1 rounded-lg font-semibold transition cursor-pointer border ${
+                      statusFilter === tab.key
+                        ? "bg-slate-900 text-white border-slate-900"
+                        : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase mr-1">Pago:</span>
+                {[
+                  { key: "todos", label: "Todos los pagos" },
+                  { key: "pagado", label: "Pagados 100%" },
+                  { key: "anticipo", label: "Con Anticipo" },
+                  { key: "por_cobrar", label: "Por Cobrar" },
+                ].map((pTab) => (
+                  <button
+                    key={pTab.key}
+                    type="button"
+                    onClick={() => {
+                      setPaymentFilter(pTab.key as any);
+                      setPage(1);
+                    }}
+                    className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer border ${
+                      paymentFilter === pTab.key
+                        ? "bg-orange-600 text-white border-orange-600"
+                        : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    {pTab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {viewMode === "lista" ? (
+            <>
+              <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
@@ -381,10 +747,24 @@ export default function PedidosPage() {
                         <td className="p-3.5 text-slate-600">
                           {(order.items || []).map((item, idx) => (
                             <div key={idx} className="flex items-center space-x-1">
-                              <PackageOpen className="w-3.5 h-3.5 text-orange-500" />
-                              <span>{item.quantity.toLocaleString()} x {item.brick_type?.name}</span>
+                              <PackageOpen className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                              <span>{item.quantity.toLocaleString("es-BO")} x {item.brick_type?.name}</span>
                             </div>
                           ))}
+                          {(() => {
+                            const op = getOrderOpStatus(order);
+                            if (op !== "por_producir" && op !== "listo_en_bodega") return null;
+                            const traffic = getPhysicalStockTrafficLight(order);
+                            return traffic.ok ? (
+                              <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <span>✓ Stock disponible en bodega: {traffic.actual.toLocaleString("es-BO")} un.</span>
+                              </div>
+                            ) : (
+                              <div className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <span>⚠ Faltan {traffic.missing.toLocaleString("es-BO")} un. en bodega — Stock actual: {traffic.actual.toLocaleString("es-BO")} un.</span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="p-3.5 text-slate-600">
                           <div className="flex items-center space-x-1.5">
@@ -438,39 +818,100 @@ export default function PedidosPage() {
                               {order.city ? order.city : "Tarifa base"}
                             </div>
                           )}
+                          {/* Etiqueta compacta de Pago / Saldo */}
+                          {(() => {
+                            const payStatus = order.payment_status || (order.status === "vendido" ? "pagado" : "por_cobrar");
+                            const paid = order.amount_paid ?? (payStatus === "pagado" ? finalAmount : 0);
+                            const balance = Math.max(0, finalAmount - paid);
+
+                            if (payStatus === "pagado") {
+                              return (
+                                <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  Pagado
+                                </span>
+                              );
+                            }
+                            if (payStatus === "anticipo") {
+                              return (
+                                <span
+                                  className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                                  title={`Saldo pendiente: Bs. ${balance.toLocaleString("es-BO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`}
+                                >
+                                  Anticipo Bs. {paid.toLocaleString("es-BO", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                Por cobrar
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="p-3.5 text-center">
-                          <select
-                            value={order.status}
-                            onChange={(e) => {
-                              const newStatus = e.target.value;
-                              if (newStatus === "vendido") {
-                                if (window.confirm("¿Confirmas que deseas Facturar/Convertir a Venta este pedido? Se registrará un ingreso en efectivo en caja y el estado cambiará a Vendido.")) {
-                                  store.convertOrderToSale(order.id, "efectivo");
-                                  loadData();
-                                } else {
-                                  e.target.value = order.status; // Revert
-                                }
-                              } else if (newStatus === "cancelado") {
-                                if (window.confirm("¿Estás seguro de cancelar este pedido? El stock reservado volverá a estar disponible.")) {
-                                  store.cancelOrder(order.id);
-                                  loadData();
-                                } else {
-                                  e.target.value = order.status; // Revert
-                                }
-                              }
-                            }}
-                            className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase outline-none cursor-pointer border transition-colors ${
-                              order.status === "pendiente" ? "bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200" :
-                              order.status === "vendido" ? "bg-red-100 text-red-700 border-red-300 hover:bg-red-200" :
-                              order.status === "cancelado" ? "bg-slate-200 text-slate-700 border-slate-300" :
-                              "bg-slate-100 text-slate-800 border-slate-200"
-                            }`}
-                          >
-                            <option value="pendiente">Pendiente</option>
-                            <option value="vendido">Vendido</option>
-                            <option value="cancelado">Cancelado</option>
-                          </select>
+                          {(() => {
+                            const isDelivered = order.status === "vendido" || order.delivery_status === "entregado";
+                            const opStatus: OrderOperationalStatus =
+                              order.operational_status ||
+                              (isDelivered
+                                ? "entregado"
+                                : order.status === "cancelado" || order.delivery_status === "cancelado"
+                                ? "cancelado"
+                                : order.order_type === "contra_produccion"
+                                ? "por_producir"
+                                : "listo_en_bodega");
+
+                            return (
+                              <select
+                                value={opStatus}
+                                disabled={opStatus === "entregado" || opStatus === "cancelado"}
+                                onChange={(e) => {
+                                  const newStatus = e.target.value;
+                                  if (newStatus === "listo_en_bodega" && opStatus === "por_producir") {
+                                    const res = store.promoteOrderToReady(order.id);
+                                    if (!res.ok) {
+                                      window.alert(res.message || "Stock insuficiente en Bodega para habilitar este pedido.");
+                                      e.target.value = opStatus;
+                                    } else {
+                                      loadData();
+                                    }
+                                  } else if (newStatus === "entregado") {
+                                    if (window.confirm("¿Confirmas marcar este pedido como ENTREGADO? Se registrará la salida definitiva en Inventario y se liberará la reserva.")) {
+                                      store.updateOrderDeliveryStatus(order.id, "entregado");
+                                      loadData();
+                                    } else {
+                                      e.target.value = opStatus;
+                                    }
+                                  } else if (newStatus === "cancelado") {
+                                    if (window.confirm("¿Estás seguro de cancelar este pedido? El stock reservado volverá a estar disponible.")) {
+                                      store.cancelOrder(order.id);
+                                      loadData();
+                                    } else {
+                                      e.target.value = opStatus;
+                                    }
+                                  } else {
+                                    e.target.value = opStatus;
+                                  }
+                                }}
+                                className={`px-2.5 py-1 rounded-md text-[11px] font-bold uppercase outline-none border transition-colors ${
+                                  opStatus === "por_producir" ? "bg-amber-100 text-amber-900 border-amber-300 hover:bg-amber-200 cursor-pointer" :
+                                  opStatus === "listo_en_bodega" ? "bg-blue-100 text-blue-800 border-blue-300 hover:bg-blue-200 cursor-pointer" :
+                                  opStatus === "entregado" ? "bg-emerald-100 text-emerald-800 border-emerald-300 cursor-default" :
+                                  opStatus === "cancelado" ? "bg-slate-200 text-slate-700 border-slate-300 cursor-default" :
+                                  "bg-slate-100 text-slate-800 border-slate-200"
+                                }`}
+                              >
+                                {opStatus === "por_producir" && (
+                                  <option value="por_producir">POR PRODUCIR</option>
+                                )}
+                                <option value="listo_en_bodega">LISTO EN BODEGA</option>
+                                {opStatus !== "por_producir" && (
+                                  <option value="entregado">ENTREGADO</option>
+                                )}
+                                <option value="cancelado">CANCELADO</option>
+                              </select>
+                            );
+                          })()}
                         </td>
                         <td className="p-3.5 text-center">
                           <div className="flex items-center justify-center gap-1.5">
@@ -498,42 +939,319 @@ export default function PedidosPage() {
             </table>
           </div>
 
-          <DataTablePagination
-            page={page}
-            totalPages={totalPages}
-            totalItems={orders.length}
-            onPageChange={setPage}
-          />
+              <DataTablePagination
+                page={page}
+                totalPages={totalPages}
+                totalItems={orders.length}
+                onPageChange={setPage}
+              />
+            </>
+          ) : (
+            /* Vista Tablero Kanban Interactivo */
+            <div className="p-4 bg-slate-50/70">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {[
+                  {
+                    key: "por_producir" as const,
+                    title: "Por Producir (Comprometidos)",
+                    headerClass: "bg-amber-100/90 text-amber-950 border-amber-300",
+                    badgeClass: "bg-amber-200 text-amber-900",
+                  },
+                  {
+                    key: "listo_en_bodega" as const,
+                    title: "Listos en Bodega (Por Entregar)",
+                    headerClass: "bg-blue-100/90 text-blue-950 border-blue-300",
+                    badgeClass: "bg-blue-200 text-blue-900",
+                  },
+                  {
+                    key: "entregado" as const,
+                    title: "Entregados",
+                    headerClass: "bg-emerald-100/90 text-emerald-950 border-emerald-300",
+                    badgeClass: "bg-emerald-200 text-emerald-900",
+                  },
+                ].map((col) => {
+                  const colOrders = orders.filter((o) => getOrderOpStatus(o) === col.key);
+                  const isOver = dragOverColumn === col.key;
+
+                  return (
+                    <div
+                      key={col.key}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (dragOverColumn !== col.key) setDragOverColumn(col.key);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverColumn === col.key) setDragOverColumn(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setDragOverColumn(null);
+                        const orderId = e.dataTransfer.getData("text/plain") || draggedOrderId;
+                        setDraggedOrderId(null);
+                        if (!orderId) return;
+                        const droppedOrder = orders.find((o) => o.id === orderId) || allOrders.find((o) => o.id === orderId);
+                        if (!droppedOrder) return;
+                        if (col.key === "listo_en_bodega" || col.key === "entregado") {
+                          handleAdvanceOrderStatus(droppedOrder, col.key);
+                        }
+                      }}
+                      className={`rounded-xl border bg-slate-100/80 flex flex-col min-h-[380px] transition-colors ${
+                        isOver ? "border-orange-500 ring-2 ring-orange-300 bg-orange-50/40" : "border-slate-200"
+                      }`}
+                    >
+                      <div className={`px-3.5 py-2.5 rounded-t-xl border-b flex items-center justify-between ${col.headerClass}`}>
+                        <span className="font-bold text-xs">{col.title}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${col.badgeClass}`}>
+                          {colOrders.length}
+                        </span>
+                      </div>
+
+                      <div className="p-3 space-y-3 flex-1 overflow-y-auto max-h-[680px]">
+                        {colOrders.length === 0 ? (
+                          <div className="text-center text-xs text-slate-400 py-10 border border-dashed border-slate-300 rounded-lg bg-white/50">
+                            Sin pedidos en esta columna
+                          </div>
+                        ) : (
+                          colOrders.map((order) => {
+                            const finalAmount =
+                              order.total_amount !== undefined
+                                ? order.total_amount
+                                : (order.items || []).reduce((s, it) => s + it.quantity * it.unit_price, 0);
+                            const payStatus = order.payment_status || (order.status === "vendido" ? "pagado" : "por_cobrar");
+                            const paid = order.amount_paid ?? (payStatus === "pagado" ? finalAmount : 0);
+                            const traffic = getPhysicalStockTrafficLight(order);
+                            const canDrag = col.key !== "entregado";
+
+                            return (
+                              <div
+                                key={order.id}
+                                draggable={canDrag}
+                                onDragStart={(e) => {
+                                  setDraggedOrderId(order.id);
+                                  e.dataTransfer.setData("text/plain", order.id);
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedOrderId(null);
+                                  setDragOverColumn(null);
+                                }}
+                                className={`bg-white rounded-xl border border-slate-200 p-3.5 shadow-2xs space-y-2.5 transition ${
+                                  canDrag ? "cursor-grab active:cursor-grabbing hover:border-orange-300 hover:shadow-sm" : ""
+                                } ${draggedOrderId === order.id ? "opacity-50" : ""}`}
+                              >
+                                {/* Header tarjeta */}
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-center gap-1.5">
+                                    {canDrag && <GripVertical className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+                                    <span className="font-mono text-xs font-bold text-slate-800">
+                                      #{order.id.slice(-6).toUpperCase()}
+                                    </span>
+                                  </div>
+                                  {payStatus === "pagado" ? (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                      Pagado
+                                    </span>
+                                  ) : payStatus === "anticipo" ? (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                      Anticipo Bs. {paid.toLocaleString("es-BO", { maximumFractionDigits: 0 })}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      Por cobrar
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Cliente */}
+                                <div>
+                                  <div className="font-bold text-xs text-slate-900 truncate">
+                                    {order.customer?.name || "Cliente Desconocido"}
+                                  </div>
+                                  <div className="flex items-center justify-between text-[11px] text-slate-500 mt-0.5">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3 text-slate-400" />
+                                      {order.delivery_date ? new Date(order.delivery_date).toLocaleDateString("es-BO") : "Sin fecha"}
+                                    </span>
+                                    <span className="font-bold text-slate-800">
+                                      Bs. {finalAmount.toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* Productos */}
+                                <div className="bg-slate-50 rounded-lg p-2 space-y-1 text-[11px] text-slate-700 border border-slate-100">
+                                  {(order.items || []).map((it, idx) => (
+                                    <div key={idx} className="flex items-center justify-between gap-2">
+                                      <span className="truncate font-medium">{it.brick_type?.name || "Ladrillo"}</span>
+                                      <span className="font-bold text-slate-900 shrink-0">{it.quantity.toLocaleString("es-BO")} un.</span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Semáforo real de stock */}
+                                {col.key !== "entregado" && (
+                                  <div
+                                    className={`px-2 py-1 rounded text-[10px] font-bold border ${
+                                      traffic.ok
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : "bg-rose-50 text-rose-700 border-rose-200"
+                                    }`}
+                                  >
+                                    {traffic.ok
+                                      ? `✓ Stock disponible en bodega: ${traffic.actual.toLocaleString("es-BO")} un.`
+                                      : `⚠ Faltan ${traffic.missing.toLocaleString("es-BO")} un. en bodega — Stock actual: ${traffic.actual.toLocaleString("es-BO")} un.`}
+                                  </div>
+                                )}
+
+                                {/* Acción rápida */}
+                                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => sendOrderWhatsApp(order)}
+                                      className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition cursor-pointer"
+                                      title="Enviar por WhatsApp"
+                                    >
+                                      <MessageCircle className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setReceiptOrder(order)}
+                                      className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition cursor-pointer"
+                                      title="Imprimir Nota de Venta"
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+
+                                  {col.key === "por_producir" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdvanceOrderStatus(order, "listo_en_bodega")}
+                                      className={`px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition cursor-pointer ${
+                                        traffic.ok
+                                          ? "bg-blue-600 hover:bg-blue-700 text-white"
+                                          : "bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300"
+                                      }`}
+                                    >
+                                      <span>Pasar a Listo en Bodega</span>
+                                      <ArrowRight className="w-3 h-3" />
+                                    </button>
+                                  )}
+
+                                  {col.key === "listo_en_bodega" && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdvanceOrderStatus(order, "entregado")}
+                                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1 transition cursor-pointer"
+                                    >
+                                      <span>Enviar a Entrega</span>
+                                      <ArrowRight className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Modal para Crear Pedido */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-hidden">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            {/* Header Fijo */}
-            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
-                  <PackageOpen className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-800 text-base">Registrar Nuevo Pedido</h3>
-                  <p className="text-xs text-slate-500">Ingresa los datos del cliente y los productos a despachar</p>
-                </div>
+      ) : (
+      /* Vista Pantalla Completa para Registrar Nuevo Pedido (respetando menú izquierdo y barra superior) */
+      <div className="p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 w-full flex flex-col overflow-hidden animate-in fade-in duration-150">
+          {/* Header Oscuro */}
+          <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-orange-600 text-white flex items-center justify-center font-bold">
+                <PackageOpen className="w-5 h-5" />
               </div>
-              <button 
-                type="button" 
-                onClick={() => setIsModalOpen(false)} 
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/60 transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div>
+                <h3 className="font-bold text-white text-base">Registrar Nuevo Pedido</h3>
+                <p className="text-xs text-slate-300">Ingresa los datos del cliente y los productos a despachar</p>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => { setIsModalOpen(false); setFormError(null); }}
+              className="text-slate-300 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              title="Volver a Gestión de Pedidos"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col flex-1 overflow-hidden min-h-0">
-              {/* Cuerpo del Formulario con scroll interno */}
-              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col">
+            {/* Cuerpo del Formulario en pantalla completa */}
+            <div className="p-6 space-y-5">
+                {/* Selector de Tipo de Pedido */}
+                <div className="border border-slate-200 p-3.5 rounded-xl bg-slate-50 space-y-2">
+                  <label className="block text-xs font-bold text-slate-800">Tipo de Pedido *</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <label
+                      className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition ${
+                        selectedOrderType === "stock"
+                          ? "bg-emerald-50 border-emerald-500 text-emerald-950 shadow-2xs"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        value="stock"
+                        {...register("orderType")}
+                        onChange={() => {
+                          setValue("orderType", "stock");
+                          setFormError(null);
+                        }}
+                        className="accent-emerald-600 w-4 h-4 mt-0.5"
+                      />
+                      <div>
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Con Stock en Bodega (Inmediato)
+                        </div>
+                        <p className="text-[11px] opacity-80 mt-0.5">
+                          Valida stock libre en Bodega Terminada y lo reserva de inmediato.
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition ${
+                        selectedOrderType === "contra_produccion"
+                          ? "bg-amber-50 border-amber-500 text-amber-950 shadow-2xs"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        value="contra_produccion"
+                        {...register("orderType")}
+                        onChange={() => {
+                          setValue("orderType", "contra_produccion");
+                          setFormError(null);
+                        }}
+                        className="accent-amber-600 w-4 h-4 mt-0.5"
+                      />
+                      <div>
+                        <div className="text-xs font-bold flex items-center gap-1.5">
+                          <Flame className="w-3.5 h-3.5 text-amber-600" />
+                          Contra Producción (Preventa / Compromiso)
+                        </div>
+                        <p className="text-[11px] opacity-80 mt-0.5">
+                          Permite registrar sin stock en bodega (en patio, horno o por fabricar). Estado: POR PRODUCIR.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">Cliente *</label>
@@ -574,7 +1292,11 @@ export default function PedidosPage() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">Fecha de Entrega Estimada *</label>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      {selectedOrderType === "contra_produccion"
+                        ? "Fecha Comprometida de Entrega *"
+                        : "Fecha de Entrega Estimada *"}
+                    </label>
                     <input
                       {...register("deliveryDate", { required: "Fecha obligatoria" })}
                       type="date"
@@ -664,10 +1386,10 @@ export default function PedidosPage() {
                       >
                         <option value="">Seleccionar...</option>
                         {brickTypes.map((b) => {
-                          const stock = inventory.find(i => i.brick_type_id === b.id && i.location === "bodega_terminado")?.quantity || 0;
+                          const freeStock = getFreeStockForBrick(b.id, true);
                           return (
                             <option key={b.id} value={b.id}>
-                              {b.name} (Stock: {stock.toLocaleString()} - Bs. {b.sale_price})
+                              {b.name} (Libre: {freeStock.toLocaleString("es-BO")} un. - Bs. {b.sale_price})
                             </option>
                           );
                         })}
@@ -693,27 +1415,58 @@ export default function PedidosPage() {
                   </div>
 
                   {selectedBrickTypeId && (
-                    <div className={`p-3 rounded-lg border flex flex-col md:flex-row justify-between items-center gap-2 ${isOutOfStock ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
-                      <div className="text-xs">
-                        <span className="font-semibold text-slate-600">Stock Actual: </span> 
-                        <span className="font-bold text-slate-800">{availableStock.toLocaleString()} un.</span>
-                        <span className="mx-2 text-slate-300">|</span>
-                        <span className="font-semibold text-slate-600">Stock Final: </span>
-                        <span className={`font-bold ${isOutOfStock ? 'text-red-600' : 'text-emerald-600'}`}>{stockAfterOrder.toLocaleString()} un.</span>
+                    <div className={`p-3 rounded-lg border flex flex-col md:flex-row justify-between items-center gap-2 ${
+                      isOutOfStock
+                        ? "bg-red-50 border-red-200"
+                        : selectedOrderType === "contra_produccion"
+                        ? "bg-amber-50/60 border-amber-200"
+                        : "bg-white border-slate-200"
+                    }`}>
+                      <div className="text-xs flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span>
+                          <span className="font-semibold text-slate-600">Disponible Libre en Bodega: </span>
+                          <span className={`font-bold ${availableStock <= 0 ? (selectedOrderType === "contra_produccion" ? "text-amber-700" : "text-red-600") : "text-emerald-700"}`}>
+                            {availableStock.toLocaleString("es-BO")} un.
+                          </span>
+                        </span>
+                        <span className="text-slate-300">|</span>
+                        <span>
+                          <span className="font-semibold text-slate-600">Reservado: </span>
+                          <span className="font-bold text-slate-700">{reservedSelectedBrick.toLocaleString("es-BO")} un.</span>
+                        </span>
+                        <span className="text-slate-300">|</span>
+                        {selectedOrderType === "stock" ? (
+                          <span>
+                            <span className="font-semibold text-slate-600">Libre Final: </span>
+                            <span className={`font-bold ${isOutOfStock ? "text-red-600" : "text-emerald-600"}`}>
+                              {stockAfterOrder.toLocaleString("es-BO")} un.
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 font-bold text-amber-800">
+                            <Flame className="w-3.5 h-3.5 text-amber-600" />
+                            Preventa: pasará a POR PRODUCIR
+                          </span>
+                        )}
                       </div>
                       <button
                         type="button"
+                        disabled={isOutOfStock || !requestedQuantity || requestedQuantity <= 0}
                         onClick={handleAddItem}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shrink-0"
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1 shrink-0 ${
+                          isOutOfStock || !requestedQuantity || requestedQuantity <= 0
+                            ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+                            : "bg-slate-800 hover:bg-slate-700 text-white cursor-pointer"
+                        }`}
                       >
                         <Plus className="w-3 h-3" /> Añadir al Pedido
                       </button>
                     </div>
                   )}
                   {selectedBrickTypeId && isOutOfStock && (
-                    <div className="flex items-start gap-1.5 text-[11px] font-bold text-red-600 mt-2">
-                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      <span>El pedido excede el stock físico. Se generará un saldo negativo pendiente de producción.</span>
+                    <div className="flex items-start gap-1.5 text-[11px] font-bold text-red-600 mt-2 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>Stock insuficiente en bodega — requiere programación de horneada o cambiar a &quot;Contra Producción (Preventa)&quot;.</span>
                     </div>
                   )}
                 </div>
@@ -777,6 +1530,44 @@ export default function PedidosPage() {
                   </div>
                 )}
 
+                {/* Control de Pago / Anticipo */}
+                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Estado de Pago / Anticipo *
+                      </label>
+                      <select
+                        {...register("paymentStatus")}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold bg-white focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="por_cobrar">Por Cobrar / Contra Entrega</option>
+                        <option value="anticipo">Anticipo / Parcial</option>
+                        <option value="pagado">Pagado Completo</option>
+                      </select>
+                    </div>
+
+                    {selectedPaymentStatus === "anticipo" && (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-700 mb-1">
+                          Monto Abonado (Bs.) *
+                        </label>
+                        <input
+                          {...register("amountPaid", { valueAsNumber: true })}
+                          type="number"
+                          min={0}
+                          max={cartTotal || undefined}
+                          step="0.01"
+                          className="w-full px-3 py-2 border border-amber-300 rounded-lg text-sm font-mono font-bold text-amber-800 bg-white focus:ring-2 focus:ring-orange-500"
+                        />
+                        <p className="text-[11px] text-amber-700 font-semibold mt-1">
+                          Saldo pendiente: Bs. {Math.max(0, cartTotal - (Number(currentAmountPaid) || 0)).toLocaleString("es-BO", { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">Notas u Observaciones (Opcional)</label>
                   <textarea
@@ -786,10 +1577,17 @@ export default function PedidosPage() {
                     placeholder="Instrucciones de entrega, dirección específica, etc."
                   />
                 </div>
+
+                {formError && (
+                  <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                )}
               </div>
 
-              {/* Footer Fijo con botones de acción e indicador de WhatsApp */}
-              <div className="px-6 py-3.5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 shrink-0">
+              {/* Footer con botones de acción e indicador de WhatsApp */}
+              <div className="px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50">
                 <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-semibold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-300">
                   <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Notificación automática por WhatsApp</span>
@@ -797,14 +1595,14 @@ export default function PedidosPage() {
                 <div className="flex items-center space-x-3">
                   <button
                     type="button"
-                    onClick={() => { setIsModalOpen(false); setCartItems([]); reset(); }}
-                    className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium transition"
+                    onClick={() => { setIsModalOpen(false); setCartItems([]); setFormError(null); reset(); }}
+                    className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 font-medium transition cursor-pointer"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm transition flex items-center gap-2"
+                    className="px-5 py-2 text-sm bg-orange-600 hover:bg-orange-500 text-white font-semibold rounded-lg shadow-sm transition flex items-center gap-2 cursor-pointer"
                   >
                     <span>Confirmar Pedido</span>
                   </button>

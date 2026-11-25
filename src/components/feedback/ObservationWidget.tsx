@@ -23,7 +23,6 @@ const MODULE_NAMES: Record<string, string> = {
   "/": "Dashboard General",
   "/produccion": "Producción - Vaciados",
   "/produccion/hornos": "Producción - Hornos",
-  "/produccion/patio-entregas": "Patio de Entregas",
   "/produccion/catalogo": "Catálogo de Productos",
   "/inventario": "Inventario de Ladrillos",
   "/ventas/clientes": "Ventas - Clientes",

@@ -142,11 +142,16 @@ export interface OrderItem {
 
 export type DeliveryStatus = 'programado' | 'entregado' | 'cancelado';
 export type DeliveryType = 'fabrica' | 'obra' | 'exportacion' | 'envio' | 'recojo';
+export type OrderPaymentStatus = 'pagado' | 'anticipo' | 'por_cobrar';
+export type OrderFulfillmentType = 'stock' | 'contra_produccion';
+export type OrderOperationalStatus = 'por_producir' | 'listo_en_bodega' | 'entregado' | 'cancelado';
 
 export interface Order {
   id: string;
   customer_id?: string;
   status: OrderStatus;
+  order_type?: OrderFulfillmentType;
+  operational_status?: OrderOperationalStatus;
   delivery_date?: string;
   delivery_type?: DeliveryType;
   delivery_status?: DeliveryStatus;
@@ -159,6 +164,8 @@ export interface Order {
   city_discount_amount?: number;
   subtotal?: number;
   total_amount?: number;
+  payment_status?: OrderPaymentStatus;
+  amount_paid?: number;
   created_at: string;
   customer?: Customer;
   items?: OrderItem[];
@@ -277,6 +284,15 @@ export interface EmployeeSettlement {
 
 export type HornoStatus = 'cargando' | 'en_quema' | 'enfriando' | 'deshorne' | 'finalizado' | 'disponible';
 
+export interface HornoCycleItem {
+  brick_type_id: string;
+  brick_name?: string;
+  cantidad_ingreso: number;
+  cantidad_salida_primera?: number;
+  cantidad_salida_segunda?: number;
+  cantidad_merma?: number;
+}
+
 export interface HornoCycle {
   id: string;
   folio: string;
@@ -285,8 +301,10 @@ export interface HornoCycle {
   hora_ingreso: string;
   brick_type_id: string;
   cantidad_ingreso: number;
+  items?: HornoCycleItem[];
   quemador_id: string;
   combustible?: string;
+  combustible_cantidad?: number;
   temperatura_estimada?: number;
   status: HornoStatus;
   fecha_salida?: string;

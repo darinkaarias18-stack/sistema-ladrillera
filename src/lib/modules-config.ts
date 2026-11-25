@@ -40,7 +40,6 @@ export const SYSTEM_MODULES: SystemModuleGroup[] = [
     subModules: [
       { id: "produccion_vaciados", name: "Vaciados Diarios", href: "/produccion", description: "Registro de moldeo y cortado" },
       { id: "produccion_hornos", name: "Ingreso y Salida de Hornos", href: "/produccion/hornos", description: "Quema y enfriado de ladrillos" },
-      { id: "produccion_patio", name: "Patio de Entregas", href: "/produccion/patio-entregas", description: "Control de stock diario y despachos" },
       { id: "produccion_inventario", name: "Inventario General", href: "/inventario", description: "Kardex y existencias físicas" },
       { id: "produccion_catalogo", name: "Catálogo de Productos", href: "/produccion/catalogo", description: "Modelos, precios y costos" },
     ]
@@ -93,7 +92,6 @@ export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
   ],
   entrega_recepcion: [
     "/",
-    "/produccion/patio-entregas",
     "/inventario",
     "/ventas/clientes",
     "/ventas/pedidos",
@@ -106,7 +104,6 @@ export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
     "/empleados/asistencia",
     "/produccion",
     "/produccion/hornos",
-    "/produccion/patio-entregas",
     "/inventario",
     "/produccion/catalogo",
     "/reportes"
@@ -115,7 +112,6 @@ export const DEFAULT_ROLE_MODULES: Record<UserRole, string[]> = {
     "/",
     "/produccion",
     "/produccion/hornos",
-    "/produccion/patio-entregas",
     "/inventario"
   ],
   ventas: [

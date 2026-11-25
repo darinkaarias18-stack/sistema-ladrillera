@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, User, LogOut, RefreshCw, Database } from "lucide-react";
+import { Calendar, User, LogOut, RefreshCw, Menu } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { store } from "@/lib/store";
@@ -189,8 +189,21 @@ export function Header({ title }: { title: string }) {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs print:hidden">
-      <div>
+    <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shrink-0 shadow-xs print:hidden">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.dispatchEvent(new CustomEvent("erp_toggle_sidebar"));
+            }
+          }}
+          className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+          title="Ampliar / Reducir menú lateral"
+          aria-label="Ampliar o reducir menú lateral"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
         <h2 className="text-xl font-bold text-slate-800 tracking-tight">{title}</h2>
       </div>
 

@@ -23,7 +23,7 @@ export function DataTableToolbar({
 
   return (
     <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pb-4">
-      <div className="relative w-full sm:w-80">
+      <div className="relative w-full max-w-md">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="text"

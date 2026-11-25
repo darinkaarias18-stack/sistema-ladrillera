@@ -18,6 +18,7 @@ import {
   EmployeeSettlement,
   DeliveryStatus,
   HornoCycle,
+  HornoCycleItem,
   HornoStatus,
   PatioDespacho,
   PatioDespachoEstado,
@@ -806,7 +807,52 @@ class MemoryStore {
   }
 
   // INVENTORY
+  private syncHornoStockWithCycles() {
+    const activeStatuses: HornoStatus[] = ["cargando", "en_quema", "enfriando", "deshorne"];
+    const expectedByBrick = new Map<string, number>();
+
+    this.hornoCycles.forEach((c) => {
+      if (!activeStatuses.includes(c.status)) return;
+      if (c.items && c.items.length > 0) {
+        c.items.forEach((it) => {
+          expectedByBrick.set(
+            it.brick_type_id,
+            (expectedByBrick.get(it.brick_type_id) || 0) + (it.cantidad_ingreso || 0)
+          );
+        });
+      } else if (c.brick_type_id) {
+        expectedByBrick.set(
+          c.brick_type_id,
+          (expectedByBrick.get(c.brick_type_id) || 0) + (c.cantidad_ingreso || 0)
+        );
+      }
+    });
+
+    // Actualizar o eliminar registros existentes de 'horno' para cuadrar 1:1 con ciclos activos
+    this.stock = this.stock.filter((s) => {
+      if (s.location !== "horno") return true;
+      return expectedByBrick.has(s.brick_type_id);
+    });
+
+    expectedByBrick.forEach((qty, brickTypeId) => {
+      const existing = this.stock.find(
+        (s) => s.brick_type_id === brickTypeId && s.location === "horno"
+      );
+      if (existing) {
+        existing.quantity = qty;
+      } else if (qty > 0) {
+        this.stock.push({
+          id: genUUID(),
+          brick_type_id: brickTypeId,
+          location: "horno",
+          quantity: qty,
+        });
+      }
+    });
+  }
+
   getInventoryStock() {
+    this.syncHornoStockWithCycles();
     return this.stock.map((s) => ({
       ...s,
       brick_type: this.brickTypes.find((bt) => bt.id === s.brick_type_id),
@@ -1017,8 +1063,40 @@ class MemoryStore {
         ? o.total_amount
         : Math.max(0, subtotal - cityDiscountAmount);
 
+      const stockList = this.getInventoryStock();
+      const orderType = o.order_type || "stock";
+      let operationalStatus =
+        o.operational_status ||
+        (o.status === "cancelado" || o.delivery_status === "cancelado"
+          ? "cancelado"
+          : o.status === "vendido" || o.delivery_status === "entregado"
+          ? "entregado"
+          : orderType === "contra_produccion"
+          ? "por_producir"
+          : "listo_en_bodega");
+
+      // Corrección automática para pedidos pendientes cuyo producto no tiene stock físico suficiente en bodega (ej. stock 0)
+      if (
+        o.status === "pendiente" &&
+        o.delivery_status !== "entregado" &&
+        o.delivery_status !== "cancelado" &&
+        operationalStatus === "listo_en_bodega"
+      ) {
+        const lacksPhysicalStock = (o.items || []).some((item) => {
+          const physical = stockList
+            .filter((s) => s.brick_type_id === item.brick_type_id && s.location === "bodega_terminado")
+            .reduce((sum, s) => sum + (s.quantity || 0), 0);
+          return physical < (item.quantity || 0);
+        });
+        if (lacksPhysicalStock) {
+          operationalStatus = "por_producir";
+        }
+      }
+
       return {
         ...o,
+        order_type: orderType,
+        operational_status: operationalStatus,
         city,
         city_discount_pct: cityDiscountPct,
         city_discount_amount: cityDiscountAmount,
@@ -1048,8 +1126,20 @@ class MemoryStore {
       ? orderData.total_amount
       : Math.max(0, subtotal - discountAmount);
 
+    const orderType = orderData.order_type || "stock";
+    const isAlreadyDelivered = orderData.status === "vendido" || orderData.delivery_status === "entregado";
+    const operationalStatus =
+      orderData.operational_status ||
+      (isAlreadyDelivered
+        ? "entregado"
+        : orderType === "contra_produccion"
+        ? "por_producir"
+        : "listo_en_bodega");
+
     const newOrder: Order = {
       ...orderData,
+      order_type: orderType,
+      operational_status: operationalStatus,
       city,
       city_discount_pct: cityDiscountPct,
       city_discount_amount: discountAmount,
@@ -1064,17 +1154,23 @@ class MemoryStore {
     // Sincronización automática a Supabase
     supabaseSync.pushChange("orders", "insert", newOrder, newOrder.id);
 
-    // Descontar inventario de bodega_terminado (Reserva física del pedido)
-    (newOrder.items || []).forEach((item) => {
-      this.addInventoryMovement({
-        brick_type_id: item.brick_type_id,
-        movement_type: "salida",
-        quantity: item.quantity,
-        from_location: "bodega_terminado",
-        reference_id: newOrder.id,
-        reference_type: "order",
+    // Si el pedido ya nace entregado/vendido, descontar de bodega una sola vez; si es pendiente, queda solo como reserva lógica.
+    if (newOrder.status === "vendido" || newOrder.delivery_status === "entregado") {
+      (newOrder.items || []).forEach((item) => {
+        this.addInventoryMovement({
+          brick_type_id: item.brick_type_id,
+          movement_type: "salida",
+          quantity: item.quantity,
+          from_location: "bodega_terminado",
+          reference_id: newOrder.id,
+          reference_type: "order_delivery",
+        });
       });
-    });
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_orders_updated"));
+    }
 
     AuditLogger.log({
       action: "CREATE",
@@ -1088,25 +1184,139 @@ class MemoryStore {
     return newOrder;
   }
 
+  private deductOrderStockOnce(order: Order) {
+    const alreadyDeducted = this.movements.some(
+      (m) =>
+        m.reference_id === order.id &&
+        (m.reference_type === "order_delivery" || m.reference_type === "order")
+    );
+    if (alreadyDeducted) return;
+
+    (order.items || []).forEach((item) => {
+      this.addInventoryMovement({
+        brick_type_id: item.brick_type_id,
+        movement_type: "salida",
+        quantity: item.quantity,
+        from_location: "bodega_terminado",
+        reference_id: order.id,
+        reference_type: "order_delivery",
+      });
+    });
+  }
+
+  private getFreeBodegaStockForBrick(brickTypeId: string): number {
+    const physical = this.getInventoryStock().find(
+      (s) => s.brick_type_id === brickTypeId && s.location === "bodega_terminado"
+    )?.quantity || 0;
+    const reserved = this.orders
+      .filter(
+        (o) =>
+          o.status === "pendiente" &&
+          (o.operational_status || (o.order_type === "contra_produccion" ? "por_producir" : "listo_en_bodega")) ===
+            "listo_en_bodega"
+      )
+      .reduce((sum, o) => {
+        const qty = (o.items || [])
+          .filter((it) => it.brick_type_id === brickTypeId)
+          .reduce((s, it) => s + it.quantity, 0);
+        return sum + qty;
+      }, 0);
+    return Math.max(0, physical - reserved);
+  }
+
+  reconcileProductionOrders(): number {
+    const pendingProduction = this.orders
+      .filter(
+        (o) =>
+          o.status === "pendiente" &&
+          (o.operational_status || (o.order_type === "contra_produccion" ? "por_producir" : "listo_en_bodega")) ===
+            "por_producir"
+      )
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+
+    let promotedCount = 0;
+    for (const order of pendingProduction) {
+      const items = order.items || [];
+      if (items.length === 0) continue;
+      const canFulfill = items.every(
+        (item) => this.getFreeBodegaStockForBrick(item.brick_type_id) >= item.quantity
+      );
+      if (canFulfill) {
+        order.operational_status = "listo_en_bodega";
+        promotedCount++;
+        AuditLogger.log({
+          action: "UPDATE",
+          severity: "medium",
+          module: "ventas",
+          entity_id: order.id,
+          description: `Pedido contra producción #${order.id.slice(-6)} cubierto por Deshorne y habilitado como LISTO EN BODEGA`,
+        });
+      }
+    }
+
+    if (promotedCount > 0 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_orders_updated"));
+    }
+    return promotedCount;
+  }
+
+  promoteOrderToReady(orderId: string): { ok: boolean; message?: string } {
+    const order = this.orders.find((o) => o.id === orderId);
+    if (!order) return { ok: false, message: "Pedido no encontrado" };
+    if (order.status !== "pendiente") return { ok: false, message: "El pedido ya no está pendiente" };
+    const items = order.items || [];
+    for (const item of items) {
+      const free = this.getFreeBodegaStockForBrick(item.brick_type_id);
+      if (item.quantity > free) {
+        const brickName = this.brickTypes.find((b) => b.id === item.brick_type_id)?.name || "Producto";
+        return {
+          ok: false,
+          message: `Stock libre insuficiente en Bodega para ${brickName} (libre: ${free.toLocaleString()}, requerido: ${item.quantity.toLocaleString()}).`,
+        };
+      }
+    }
+    order.operational_status = "listo_en_bodega";
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_orders_updated"));
+    }
+    AuditLogger.log({
+      action: "UPDATE",
+      severity: "medium",
+      module: "ventas",
+      entity_id: order.id,
+      description: `Pedido #${order.id.slice(-6)} pasado manualmente a LISTO EN BODEGA`,
+    });
+    return { ok: true };
+  }
+
   updateOrderDeliveryStatus(orderId: string, deliveryStatus: DeliveryStatus): Order | null {
     const order = this.orders.find(o => o.id === orderId);
     if (!order) return null;
     const prevStatus = order.delivery_status;
-    order.delivery_status = deliveryStatus;
 
     if (deliveryStatus === "entregado") {
+      order.delivery_status = "entregado";
       order.status = "vendido";
+      order.operational_status = "entregado";
+      this.deductOrderStockOnce(order);
       this.convertOrderToSale(order.id, "efectivo");
     } else if (deliveryStatus === "cancelado") {
-      order.status = "cancelado";
+      this.cancelOrder(order.id);
     } else {
+      order.delivery_status = deliveryStatus;
       if (order.status === "vendido") {
         order.status = "pendiente";
+        order.operational_status = order.order_type === "contra_produccion" ? "por_producir" : "listo_en_bodega";
       }
     }
 
     // Sincronización automática a Supabase
     supabaseSync.pushChange("orders", "update", { status: order.status }, orderId);
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_orders_updated"));
+      window.dispatchEvent(new CustomEvent("erp_inventory_updated"));
+    }
 
     AuditLogger.log({
       action: "UPDATE",
@@ -1200,16 +1410,25 @@ class MemoryStore {
     if (orderIndex === -1) return null;
     
     const order = this.orders[orderIndex];
-    order.status = "vendido";
-    order.delivery_status = "entregado";
-
-    const existingSale = this.sales.find(s => s.order_id === order.id);
+    const existingSale = this.sales.find((s) => s.order_id === orderId);
     if (existingSale) {
+      order.status = "vendido";
+      order.delivery_status = "entregado";
+      order.operational_status = "entregado";
+      this.deductOrderStockOnce(order);
       return existingSale;
     }
-    
-    const totalAmount = (order.items || []).reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
-    
+
+    order.status = "vendido";
+    order.delivery_status = "entregado";
+    order.operational_status = "entregado";
+    this.deductOrderStockOnce(order);
+
+    const totalAmount =
+      order.total_amount !== undefined
+        ? order.total_amount
+        : (order.items || []).reduce((acc, item) => acc + item.quantity * item.unit_price, 0);
+
     const newSale: Sale = {
       id: `sale-${Date.now()}`,
       order_id: order.id,
@@ -1217,22 +1436,20 @@ class MemoryStore {
       total_amount: totalAmount,
       payment_method: paymentMethod,
       created_at: new Date().toISOString(),
-      items: (order.items || []).map(item => ({
+      items: (order.items || []).map((item) => ({
         id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         sale_id: "",
         brick_type_id: item.brick_type_id,
         quantity: item.quantity,
-        unit_price: item.unit_price
-      }))
+        unit_price: item.unit_price,
+      })),
     };
-    
+
     if (newSale.items) {
-      newSale.items.forEach(i => i.sale_id = newSale.id);
+      newSale.items.forEach((i) => (i.sale_id = newSale.id));
     }
-    
+
     this.sales.unshift(newSale);
-    
-    // No descontamos inventario nuevamente porque createOrder ya lo descontó (reserva física).
 
     this.addCashLedgerEntry({
       movement_date: getTodayDateString(),
@@ -1242,6 +1459,13 @@ class MemoryStore {
       reference_type: "sale",
       reference_id: newSale.id,
     });
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_orders_updated"));
+      window.dispatchEvent(new CustomEvent("erp_inventory_updated"));
+      window.dispatchEvent(new CustomEvent("erp_sales_updated"));
+      window.dispatchEvent(new CustomEvent("erp_cash_updated"));
+    }
 
     const cust = this.customers.find((c) => c.id === order.customer_id);
     AuditLogger.log({
@@ -1262,25 +1486,41 @@ class MemoryStore {
     
     const order = this.orders[orderIndex];
     order.status = "cancelado";
+    order.delivery_status = "cancelado";
+    order.operational_status = "cancelado";
     
-    // Restaurar inventario (deshacer reserva)
-    (order.items || []).forEach(item => {
-      this.addInventoryMovement({
-        brick_type_id: item.brick_type_id,
-        movement_type: "entrada",
-        quantity: item.quantity,
-        to_location: "bodega_terminado",
-        reference_id: order.id,
-        reference_type: "order_cancellation",
+    // Solo restaurar inventario físico si este pedido ya había generado una salida de bodega
+    const hadPhysicalDeduction = this.movements.some(
+      (m) => m.reference_id === order.id && (m.reference_type === "order_delivery" || m.reference_type === "order")
+    );
+    const alreadyRestored = this.movements.some(
+      (m) => m.reference_id === order.id && m.reference_type === "order_cancellation"
+    );
+
+    if (hadPhysicalDeduction && !alreadyRestored) {
+      (order.items || []).forEach(item => {
+        this.addInventoryMovement({
+          brick_type_id: item.brick_type_id,
+          movement_type: "entrada",
+          quantity: item.quantity,
+          to_location: "bodega_terminado",
+          reference_id: order.id,
+          reference_type: "order_cancellation",
+        });
       });
-    });
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_orders_updated"));
+      window.dispatchEvent(new CustomEvent("erp_inventory_updated"));
+    }
 
     AuditLogger.log({
       action: "UPDATE",
       severity: "high",
       module: "ventas",
       entity_id: orderId,
-      description: `Cancelación de pedido #${order.id.slice(-6)} y reversión de stock a bodega`,
+      description: `Cancelación de pedido #${order.id.slice(-6)} y liberación de reserva`,
     });
     
     return order;
@@ -1682,33 +1922,65 @@ class MemoryStore {
 
   addHornoIngreso(data: Omit<HornoCycle, "id" | "created_at" | "folio">): HornoCycle {
     const nextFolioNum = 200 + this.hornoCycles.length + 1;
+    const normalizedItems: HornoCycleItem[] =
+      data.items && data.items.length > 0
+        ? data.items.map((it) => ({
+            ...it,
+            brick_name:
+              it.brick_name || this.brickTypes.find((b) => b.id === it.brick_type_id)?.name,
+          }))
+        : [
+            {
+              brick_type_id: data.brick_type_id,
+              brick_name: this.brickTypes.find((b) => b.id === data.brick_type_id)?.name,
+              cantidad_ingreso: data.cantidad_ingreso,
+            },
+          ];
+
+    const totalIngreso = normalizedItems.reduce((sum, it) => sum + (it.cantidad_ingreso || 0), 0);
+
     const newCycle: HornoCycle = {
       ...data,
+      brick_type_id: normalizedItems[0]?.brick_type_id || data.brick_type_id,
+      cantidad_ingreso: totalIngreso,
+      items: normalizedItems,
       id: `cycle-${Date.now()}`,
       folio: `HRN-${String(nextFolioNum).padStart(4, "0")}`,
       created_at: new Date().toISOString(),
     };
     this.hornoCycles.unshift(newCycle);
 
-    // Movimiento de inventario: Traslado patio_secado -> horno
-    this.addInventoryMovement({
-      brick_type_id: newCycle.brick_type_id,
-      movement_type: "traslado",
-      quantity: newCycle.cantidad_ingreso,
-      from_location: "patio_secado",
-      to_location: "horno",
-      reference_id: newCycle.id,
-      reference_type: "horno_ingreso",
+    // Movimiento de inventario por cada tipo de ladrillo: Traslado patio_secado -> horno
+    normalizedItems.forEach((it) => {
+      if (it.cantidad_ingreso > 0) {
+        this.addInventoryMovement({
+          brick_type_id: it.brick_type_id,
+          movement_type: "traslado",
+          quantity: it.cantidad_ingreso,
+          from_location: "patio_secado",
+          to_location: "horno",
+          reference_id: newCycle.id,
+          reference_type: "horno_ingreso",
+        });
+      }
     });
 
-    const bt = this.brickTypes.find((b) => b.id === newCycle.brick_type_id);
+    this.syncHornoStockWithCycles();
+    this.reconcileProductionOrders();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_inventory_updated"));
+    }
+
+    const summaryBricks = normalizedItems
+      .map((it) => `${it.cantidad_ingreso.toLocaleString()} ${it.brick_name || "Ladrillo"}`)
+      .join(", ");
     AuditLogger.log({
       action: "CREATE",
       severity: "medium",
       module: "produccion_hornos",
       entity_id: newCycle.id,
-      description: `Carga e ingreso a horno ${newCycle.horno_number} (${newCycle.folio}): ${newCycle.cantidad_ingreso.toLocaleString()} unid. de ${bt?.name || "Ladrillo"}`,
-      details: { folio: newCycle.folio, horno: newCycle.horno_number, cantidad: newCycle.cantidad_ingreso },
+      description: `Carga e ingreso a horno ${newCycle.horno_number} (${newCycle.folio}): ${summaryBricks}`,
+      details: { folio: newCycle.folio, horno: newCycle.horno_number, cantidad: totalIngreso, items: normalizedItems },
     });
 
     return newCycle;
@@ -1722,6 +1994,7 @@ class MemoryStore {
       cantidad_salida_primera: number;
       cantidad_salida_segunda: number;
       cantidad_merma: number;
+      items?: HornoCycleItem[];
       supervisor?: string;
       notes?: string;
     }
@@ -1730,22 +2003,35 @@ class MemoryStore {
     if (idx === -1) return null;
 
     const cycle = this.hornoCycles[idx];
-    const total_salida =
-      salidaData.cantidad_salida_primera +
-      salidaData.cantidad_salida_segunda +
-      salidaData.cantidad_merma;
+    const itemsSalida = salidaData.items && salidaData.items.length > 0 ? salidaData.items : null;
+
+    const sumPrimera = itemsSalida
+      ? itemsSalida.reduce((s, it) => s + (it.cantidad_salida_primera || 0), 0)
+      : salidaData.cantidad_salida_primera;
+    const sumSegunda = itemsSalida
+      ? itemsSalida.reduce((s, it) => s + (it.cantidad_salida_segunda || 0), 0)
+      : salidaData.cantidad_salida_segunda;
+    const sumMerma = itemsSalida
+      ? itemsSalida.reduce((s, it) => s + (it.cantidad_merma || 0), 0)
+      : salidaData.cantidad_merma;
+
+    const total_salida = sumPrimera + sumSegunda + sumMerma;
     const rendimiento_pct =
       cycle.cantidad_ingreso > 0
-        ? Number(((salidaData.cantidad_salida_primera / cycle.cantidad_ingreso) * 100).toFixed(1))
+        ? Number(((sumPrimera / cycle.cantidad_ingreso) * 100).toFixed(1))
         : 0;
     const merma_pct =
       cycle.cantidad_ingreso > 0
-        ? Number(((salidaData.cantidad_merma / cycle.cantidad_ingreso) * 100).toFixed(1))
+        ? Number(((sumMerma / cycle.cantidad_ingreso) * 100).toFixed(1))
         : 0;
 
     const updated: HornoCycle = {
       ...cycle,
       ...salidaData,
+      cantidad_salida_primera: sumPrimera,
+      cantidad_salida_segunda: sumSegunda,
+      cantidad_merma: sumMerma,
+      items: itemsSalida || cycle.items,
       total_salida,
       rendimiento_pct,
       merma_pct,
@@ -1754,30 +2040,61 @@ class MemoryStore {
 
     this.hornoCycles[idx] = updated;
 
-    // Movimiento de inventario: Mover de 'horno' a 'bodega_terminado'
-    const totalBuenos = salidaData.cantidad_salida_primera + salidaData.cantidad_salida_segunda;
-    if (totalBuenos > 0) {
-      this.addInventoryMovement({
-        brick_type_id: cycle.brick_type_id,
-        movement_type: "traslado",
-        quantity: totalBuenos,
-        from_location: "horno",
-        to_location: "bodega_terminado",
-        reference_id: cycle.id,
-        reference_type: "horno_salida",
+    // Movimiento de inventario por cada tipo de ladrillo: 'horno' -> 'bodega_terminado' y merma
+    if (itemsSalida) {
+      itemsSalida.forEach((it) => {
+        const buenos = (it.cantidad_salida_primera || 0) + (it.cantidad_salida_segunda || 0);
+        if (buenos > 0) {
+          this.addInventoryMovement({
+            brick_type_id: it.brick_type_id,
+            movement_type: "traslado",
+            quantity: buenos,
+            from_location: "horno",
+            to_location: "bodega_terminado",
+            reference_id: cycle.id,
+            reference_type: "horno_salida",
+          });
+        }
+        if ((it.cantidad_merma || 0) > 0) {
+          this.addInventoryMovement({
+            brick_type_id: it.brick_type_id,
+            movement_type: "salida",
+            quantity: it.cantidad_merma || 0,
+            from_location: "horno",
+            reference_id: cycle.id,
+            reference_type: "horno_merma",
+          });
+        }
       });
+    } else {
+      const totalBuenos = sumPrimera + sumSegunda;
+      if (totalBuenos > 0) {
+        this.addInventoryMovement({
+          brick_type_id: cycle.brick_type_id,
+          movement_type: "traslado",
+          quantity: totalBuenos,
+          from_location: "horno",
+          to_location: "bodega_terminado",
+          reference_id: cycle.id,
+          reference_type: "horno_salida",
+        });
+      }
+      if (sumMerma > 0) {
+        this.addInventoryMovement({
+          brick_type_id: cycle.brick_type_id,
+          movement_type: "salida",
+          quantity: sumMerma,
+          from_location: "horno",
+          reference_id: cycle.id,
+          reference_type: "horno_merma",
+        });
+      }
     }
 
-    // Merma se descuenta del horno
-    if (salidaData.cantidad_merma > 0) {
-      this.addInventoryMovement({
-        brick_type_id: cycle.brick_type_id,
-        movement_type: "salida",
-        quantity: salidaData.cantidad_merma,
-        from_location: "horno",
-        reference_id: cycle.id,
-        reference_type: "horno_merma",
-      });
+    this.syncHornoStockWithCycles();
+    this.reconcileProductionOrders();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("erp_inventory_updated"));
     }
 
     AuditLogger.log({
@@ -1785,8 +2102,8 @@ class MemoryStore {
       severity: "high",
       module: "produccion_hornos",
       entity_id: id,
-      description: `Deshorne concluido en ${cycle.horno_number} (${cycle.folio}): Primera: ${salidaData.cantidad_salida_primera.toLocaleString()} unid. | Segunda: ${salidaData.cantidad_salida_segunda.toLocaleString()} unid. | Merma: ${salidaData.cantidad_merma.toLocaleString()} unid. (Rendimiento: ${rendimiento_pct}%)`,
-      details: { ...salidaData, rendimiento_pct, merma_pct },
+      description: `Deshorne concluido en ${cycle.horno_number} (${cycle.folio}): Primera: ${sumPrimera.toLocaleString()} unid. | Segunda: ${sumSegunda.toLocaleString()} unid. | Merma: ${sumMerma.toLocaleString()} unid. (Rendimiento: ${rendimiento_pct}%)`,
+      details: { ...salidaData, cantidad_salida_primera: sumPrimera, cantidad_salida_segunda: sumSegunda, cantidad_merma: sumMerma, rendimiento_pct, merma_pct },
     });
 
     return updated;
@@ -1808,96 +2125,6 @@ class MemoryStore {
     });
 
     return this.hornoCycles[idx];
-  }
-
-  // ==========================================
-  // PATIO DE ENTREGAS: CONTROL, CARGUÍO Y DESPACHO
-  // ==========================================
-  getPatioDespachos(filter?: { estado?: string; fecha?: string }) {
-    let list = [...this.patioDespachos];
-    if (filter?.estado && filter.estado !== "todos") {
-      list = list.filter((p) => p.estado === filter.estado);
-    }
-    if (filter?.fecha) {
-      list = list.filter((p) => p.fecha === filter.fecha);
-    }
-    return list.sort((a, b) => b.fecha.localeCompare(a.fecha) || b.hora_ingreso.localeCompare(a.hora_ingreso));
-  }
-
-  addPatioDespacho(data: Omit<PatioDespacho, "id" | "created_at" | "folio">): PatioDespacho {
-    const nextNum = 90 + this.patioDespachos.length + 1;
-    const newDespacho: PatioDespacho = {
-      ...data,
-      id: `patio-${Date.now()}`,
-      folio: `PTE-${String(nextNum).padStart(4, "0")}`,
-      created_at: new Date().toISOString(),
-    };
-    this.patioDespachos.unshift(newDespacho);
-
-    // Si ya está despachado al crearse, se descuenta de bodega_terminado
-    if (newDespacho.estado === "despachado") {
-      newDespacho.items.forEach((item) => {
-        this.addInventoryMovement({
-          brick_type_id: item.brick_type_id,
-          movement_type: "salida",
-          quantity: item.cantidad,
-          from_location: "bodega_terminado",
-          reference_id: newDespacho.id,
-          reference_type: "patio_despacho",
-        });
-      });
-    }
-
-    AuditLogger.log({
-      action: "CREATE",
-      severity: "medium",
-      module: "patio_despacho",
-      entity_id: newDespacho.id,
-      description: `Orden de despacho en patio ${newDespacho.folio}: Conductor ${newDespacho.chofer_nombre} (Placa: ${newDespacho.placa_camion}) - Estado: ${newDespacho.estado.toUpperCase()}`,
-      details: newDespacho,
-    });
-
-    return newDespacho;
-  }
-
-  updatePatioDespachoEstado(
-    id: string,
-    estado: PatioDespachoEstado,
-    hora_salida?: string
-  ): PatioDespacho | null {
-    const idx = this.patioDespachos.findIndex((p) => p.id === id);
-    if (idx === -1) return null;
-    const prev = this.patioDespachos[idx];
-    const prevEstado = prev.estado;
-
-    this.patioDespachos[idx].estado = estado;
-    if (hora_salida) {
-      this.patioDespachos[idx].hora_salida = hora_salida;
-    }
-
-    if (prevEstado !== "despachado" && estado === "despachado") {
-      prev.items.forEach((item) => {
-        this.addInventoryMovement({
-          brick_type_id: item.brick_type_id,
-          movement_type: "salida",
-          quantity: item.cantidad,
-          from_location: "bodega_terminado",
-          reference_id: prev.id,
-          reference_type: "patio_despacho",
-        });
-      });
-    }
-
-    AuditLogger.log({
-      action: "UPDATE",
-      severity: "medium",
-      module: "patio_despacho",
-      entity_id: id,
-      description: `Despacho ${prev.folio} cambió de estado a "${estado.toUpperCase()}"`,
-      details: { folio: prev.folio, estado, previous_status: prevEstado, hora_salida },
-    });
-
-    return this.patioDespachos[idx];
   }
 }
 
